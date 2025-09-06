@@ -1,0 +1,349 @@
+# Tennis App MVP - User Flow & UI Screens
+
+## User Flow Diagram
+
+```mermaid
+flowchart TD
+    A[App Launch] --> B[Camera View]
+    B -->|Tap Record| C[Recording Mode]
+    C -->|Stop/Auto-detect| D[Processing]
+    D --> E[Analysis View]
+    
+    B -->|Tap Upload| F[File Picker]
+    F -->|Select Video| G[Processing]
+    G --> E
+    
+    B -->|Tap History| H[History List]
+    H -->|Select Session| E
+    
+    E -->|Back| B
+    E -->|Play Video| I[Dynamic Shot Analysis]
+    I -->|Video Scrub| J[Update Shot Info]
+```
+
+## Screen Designs
+
+### 1. HOME SCREEN - Camera View (Full Screen)
+
+```
+┌─────────────────────────────┐
+│                             │
+│                             │
+│                             │
+│      [Live Camera Feed]     │
+│                             │
+│    [Skeleton Overlay On]    │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+├─────────────────────────────┤
+│                             │
+│  📁      ╔═══════╗      📊  │
+│          ║   ●   ║          │
+│          ╚═══════╝          │
+│                             │
+└─────────────────────────────┘
+
+States:
+- Default: Shows skeleton overlay
+- Recording: Red dot, timer "0:23"
+```
+
+### 2. HISTORY VIEW
+
+```
+┌─────────────────────────────┐
+│ ←                           │
+├─────────────────────────────┤
+│                             │
+│ ┌─────────────────────────┐ │
+│ │ ▶ [Video Thumbnail]     │ │
+│ │   2:30 PM • 5 shots     │ │
+│ └─────────────────────────┘ │
+│                             │
+│ ┌─────────────────────────┐ │
+│ │ ▶ [Video Thumbnail]     │ │
+│ │   Yesterday • 3 shots   │ │
+│ └─────────────────────────┘ │
+│                             │
+│ ┌─────────────────────────┐ │
+│ │ ▶ [Video Thumbnail]     │ │
+│ │   Jan 21 • 8 shots      │ │
+│ └─────────────────────────┘ │
+│                             │
+│ ┌─────────────────────────┐ │
+│ │ ▶ [Video Thumbnail]     │ │
+│ │   Jan 20 • 12 shots     │ │
+│ └─────────────────────────┘ │
+│                             │
+└─────────────────────────────┘
+
+Each row is tappable → Analysis
+```
+
+### 3. ANALYSIS VIEW
+
+```
+┌─────────────────────────────┐
+│ ←                           │
+├─────────────────────────────┤
+│                             │
+│      [Video Player]         │
+│         ▶ 0:23/1:45         │
+│                             │
+│     ●---●---●---●---●       │
+│     FH  FH  BH  FH  BH      │
+│     6.2 7.1 8.5 6.9 7.9     │
+│                             │
+├─────────────────────────────┤
+│                             │
+│ Shot 2 - Forehand           │
+│                             │
+│ 💡 Late contact point       │
+│                             │
+│ Hit 8" earlier → HERE       │
+│ [Visual overlay on video]   │
+│                             │
+│ ✓ Good shoulder rotation    │
+│                             │
+└─────────────────────────────┘
+
+Updates dynamically as video plays
+```
+
+## Interaction Details
+
+### Recording Flow
+```
+● button → Recording (red)
+    ↓
+Auto-stop on shot detection
+OR manual stop (tap again)
+    ↓
+Processing animation
+    ↓
+Analysis View
+```
+
+### Upload Flow
+```
+📁 icon → Native file picker
+    ↓
+Select video
+    ↓
+Processing animation
+    ↓
+Analysis View
+```
+# Tennis App MVP - User Flow & UI Screens
+
+## User Flow Diagram
+
+```mermaid
+flowchart TD
+    A[App Launch] --> B[Camera View]
+    B -->|Tap Record| C[Recording Mode]
+    C -->|Stop/Auto-detect| D[Processing]
+    D --> E[Analysis View]
+    
+    B -->|Tap Upload| F[File Picker]
+    F -->|Select Video| G[Processing]
+    G --> E
+    
+    B -->|Tap History| H[History List]
+    H -->|Select Session| E
+    
+    E -->|Back| B
+    E -->|Play Video| I[Dynamic Shot Analysis]
+    I -->|Video Scrub| J[Update Shot Info]
+```
+
+## Screen Designs
+
+### 1. HOME SCREEN - Camera View (Full Screen)
+
+```
+┌─────────────────────────────┐
+│                             │
+│                             │
+│                             │
+│      [Live Camera Feed]     │
+│                             │
+│    [Skeleton Overlay On]    │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+├─────────────────────────────┤
+│                             │
+│  📁      ╔═══════╗      📊  │
+│          ║   ●   ║          │
+│          ╚═══════╝          │
+│                             │
+└─────────────────────────────┘
+
+States:
+- Default: Shows skeleton overlay
+- Recording: Red dot, timer "0:23"
+```
+
+### 2. HISTORY VIEW
+
+```
+┌─────────────────────────────┐
+│ ←                           │
+├─────────────────────────────┤
+│                             │
+│ ┌─────────────────────────┐ │
+│ │ ▶ [Video Thumbnail]     │ │
+│ │   2:30 PM • 5 shots     │ │
+│ └─────────────────────────┘ │
+│                             │
+│ ┌─────────────────────────┐ │
+│ │ ▶ [Video Thumbnail]     │ │
+│ │   Yesterday • 3 shots   │ │
+│ └─────────────────────────┘ │
+│                             │
+│ ┌─────────────────────────┐ │
+│ │ ▶ [Video Thumbnail]     │ │
+│ │   Jan 21 • 8 shots      │ │
+│ └─────────────────────────┘ │
+│                             │
+│ ┌─────────────────────────┐ │
+│ │ ▶ [Video Thumbnail]     │ │
+│ │   Jan 20 • 12 shots     │ │
+│ └─────────────────────────┘ │
+│                             │
+└─────────────────────────────┘
+
+Each row is tappable → Analysis
+```
+
+### 3. ANALYSIS VIEW
+
+```
+┌─────────────────────────────┐
+│ ←                           │
+├─────────────────────────────┤
+│                             │
+│      [Video Player]         │
+│         ▶ 0:23/1:45         │
+│                             │
+│     ●---●---●---●---●       │
+│     FH  FH  BH  FH  BH      │
+│     6.2 7.1 8.5 6.9 7.9     │
+│                             │
+├─────────────────────────────┤
+│                             │
+│ Shot 2 - Forehand           │
+│                             │
+│ 💡 Late contact point       │
+│                             │
+│ Hit 8" earlier → HERE       │
+│ [Visual overlay on video]   │
+│                             │
+│ ✓ Good shoulder rotation    │
+│                             │
+└─────────────────────────────┘
+
+Updates dynamically as video plays
+```
+
+## Interaction Details
+
+### Recording Flow
+```
+● button → Recording (red)
+    ↓
+Auto-stop on shot detection
+OR manual stop (tap again)
+    ↓
+Processing animation
+    ↓
+Analysis View
+```
+
+### Upload Flow
+```
+📁 icon → Native file picker
+    ↓
+Select video
+    ↓
+Processing animation
+    ↓
+Analysis View
+```
+
+### History Flow
+```
+📊 icon → Video list
+    ↓
+Tap any video thumbnail
+    ↓
+Analysis View
+```
+
+## Key Design Principles
+
+1. **Full screen camera** - No wasted space
+2. **Icons only** - No text labels needed
+3. **Video thumbnails** - Visual recognition in history
+4. **Minimal metrics** - Time & shot count only
+5. **No headers** - Back arrow is enough
+6. **Dynamic content** - Analysis updates with playback
+
+## Technical Implementation Order
+
+1. Camera view with Vision skeleton
+2. Recording with shot detection
+3. Analysis view with video player
+4. History with video thumbnails
+5. Upload capability
+
+## Success Metrics
+
+- Time to record: 1 tap
+- Time to insight: < 30 seconds
+- UI elements on screen: < 5 per view
+### History Flow
+```
+📊 icon → Video list
+    ↓
+Tap any video thumbnail
+    ↓
+Analysis View
+```
+
+## Key Design Principles
+
+1. **Full screen camera** - No wasted space
+2. **Icons only** - No text labels needed
+3. **Video thumbnails** - Visual recognition in history
+4. **Minimal metrics** - Time & shot count only
+5. **No headers** - Back arrow is enough
+6. **Dynamic content** - Analysis updates with playback
+
+## Technical Implementation Order
+
+1. Camera view with Vision skeleton
+2. Recording with shot detection
+3. Analysis view with video player
+4. History with video thumbnails
+5. Upload capability
+
+## Success Metrics
+
+- Time to record: 1 tap
+- Time to insight: < 30 seconds
+- UI elements on screen: < 5 per view
