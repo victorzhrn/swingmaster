@@ -110,3 +110,5 @@ AuthKey_*.p8
 
 # Firebase
 GoogleService-Info.plist
+
+.cursor/**
