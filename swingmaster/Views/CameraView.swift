@@ -20,6 +20,7 @@ struct CameraView: View {
     @State private var finishingSession: Bool = false
 
     let onRecorded: (URL) -> Void
+    let onShowHistory: () -> Void
 
     var body: some View {
         ZStack {
@@ -86,7 +87,7 @@ struct CameraView: View {
                         HStack {
                             Spacer()
                             if !(camera.isRecording || camera.isPaused) {
-                                Button(action: { /* TODO: navigate to History in Phase 1 */ }) {
+                                Button(action: { onShowHistory() }) {
                                     Image(systemName: "chart.bar.xaxis")
                                         .font(.system(size: 24, weight: .regular))
                                         .foregroundColor(.white)
