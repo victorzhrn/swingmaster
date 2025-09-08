@@ -22,6 +22,7 @@ struct CameraView: View {
     @State private var finishingSession: Bool = false
     @State private var isProcessing: Bool = false
     @State private var showingPicker: Bool = false
+    @State private var showSkeleton: Bool = true
 
     let onRecorded: (URL) -> Void
     let onShowHistory: () -> Void
@@ -45,13 +46,11 @@ struct CameraView: View {
                         .ignoresSafeArea()
                 }
 
-                // Skeleton overlay (static for now)
-                Image(systemName: "figure.walk")
-                    .resizable()
-                    .scaledToFit()
-                    .opacity(0.22)
-                    .frame(width: 120, height: 120)
-                    .position(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY)
+                if showSkeleton {
+                    SkeletonOverlay(pose: camera.latestPose)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                }
 
                 VStack {
                     Spacer()
@@ -177,6 +176,9 @@ struct CameraView: View {
                         Text(timeString(elapsedTime))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white)
+                        Text(String(format: " · %.1f fps", camera.processedFPS))
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.85))
                         Spacer()
                     }
                     .padding(.horizontal, 16)
@@ -258,6 +260,26 @@ struct CameraView: View {
                 }
             }
         )
+        .overlay(alignment: .topTrailing) {
+            if !(camera.isRecording || camera.isPaused) {
+                Button(action: { withAnimation { showSkeleton.toggle() } }) {
+                    Image(systemName: showSkeleton ? "eye" : "eye.slash")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.35))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                }
+                .padding(.top, 12)
+                .padding(.trailing, 12)
+                .accessibilityLabel(showSkeleton ? "Hide skeleton overlay" : "Show skeleton overlay")
+            }
+        }
         .sheet(isPresented: $showingPicker) {
             VideoPicker { pickedTempURL in
                 // Show processing for 3 seconds, then delegate to onRecorded

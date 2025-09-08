@@ -9,6 +9,7 @@
 
 import Foundation
 import AVFoundation
+import Vision
 
 /// CameraManager is responsible for:
 /// - Requesting camera & microphone permissions
@@ -31,6 +32,20 @@ final class CameraManager: NSObject, ObservableObject {
     private let session = AVCaptureSession()
     private let movieOutput = AVCaptureMovieFileOutput()
     private let sessionQueue = DispatchQueue(label: "com.swingmaster.camera.session")
+    private let videoDataOutput = AVCaptureVideoDataOutput()
+    private let videoDataQueue = DispatchQueue(label: "com.swingmaster.camera.frames", qos: .userInitiated)
+
+    // Pose processing
+    private let poseProcessor = PoseProcessor()
+    private var frameCount: Int = 0
+
+    // Latest pose for UI overlay
+    @Published var latestPose: PoseFrame?
+    @Published var processedFPS: Double = 0
+
+    // FPS calculation
+    private var fpsWindowCount: Int = 0
+    private var fpsWindowStart: TimeInterval = CACurrentMediaTime()
 
     /// Exposes the session for preview rendering.
     var captureSession: AVCaptureSession { session }
@@ -98,6 +113,14 @@ final class CameraManager: NSObject, ObservableObject {
                 if self.session.canAddOutput(self.movieOutput) {
                     self.session.addOutput(self.movieOutput)
                 }
+
+                // Video data output (for Vision)
+                self.videoDataOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+                self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
+                if self.session.canAddOutput(self.videoDataOutput) {
+                    self.session.addOutput(self.videoDataOutput)
+                }
+                self.videoDataOutput.setSampleBufferDelegate(self, queue: self.videoDataQueue)
             } catch {
                 DispatchQueue.main.async {
                     self.errorMessage = "Camera configuration failed: \(error.localizedDescription)"
@@ -189,6 +212,45 @@ extension CameraManager: AVCaptureFileOutputRecordingDelegate {
                 self.lastRecordedURL = outputFileURL
             }
             self.isRecording = false
+        }
+    }
+}
+
+// MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+
+extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        frameCount += 1
+        // Sample at ~10 fps from a 30 fps source.
+        if frameCount % 3 != 0 { return }
+
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let timestamp = CMTimeGetSeconds(pts)
+
+        Task { [weak self] in
+            guard let self = self else { return }
+            if let pose = await self.poseProcessor.processFrame(pixelBuffer, timestamp: timestamp) {
+                await MainActor.run {
+                    self.latestPose = pose
+                }
+            } else {
+                // Clear pose occasionally when detection fails to reduce ghosting
+                await MainActor.run {
+                    self.latestPose = nil
+                }
+            }
+        }
+
+        // Update FPS window on processed frames
+        fpsWindowCount += 1
+        let now = CACurrentMediaTime()
+        let delta = now - fpsWindowStart
+        if delta >= 1.0 {
+            let fps = Double(fpsWindowCount) / delta
+            fpsWindowStart = now
+            fpsWindowCount = 0
+            DispatchQueue.main.async { self.processedFPS = fps }
         }
     }
 }
