@@ -22,7 +22,7 @@ struct AnalysisView: View {
             // Real video when available, otherwise placeholder
             Group {
                 if let url = videoURL {
-                    VideoPlayerView(url: url)
+                    VideoPlayerView(url: url, currentTime: $currentTime, isPlaying: $isPlaying)
                         .frame(height: 320)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
@@ -72,6 +72,27 @@ struct AnalysisView: View {
         .background(Color.black.ignoresSafeArea())
         .onAppear {
             if selectedShotID == nil, let first = shots.first { selectedShotID = first.id; currentTime = first.time }
+        }
+        .onChange(of: selectedShotID) { _, newID in
+            // Seek video when selection changes
+            if let id = newID, let shot = shots.first(where: { $0.id == id }) {
+                currentTime = shot.time
+            }
+        }
+        .onChange(of: currentTime) { _, t in
+            // Auto-advance selection while playing, with hysteresis between markers
+            guard isPlaying, !shots.isEmpty else { return }
+            guard let currentIndex = currentSelectedIndexOrNearest(to: t) else { return }
+            let idx = currentIndex
+            // Decide if we cross midpoint to next or previous
+            if idx < shots.count - 1 {
+                let midToNext = (shots[idx].time + shots[idx + 1].time) / 2
+                if t >= midToNext - 0.05 { selectedShotID = shots[idx + 1].id }
+            }
+            if idx > 0 {
+                let midToPrev = (shots[idx - 1].time + shots[idx].time) / 2
+                if t < midToPrev + 0.05 { selectedShotID = shots[idx - 1].id }
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -137,6 +158,13 @@ struct AnalysisView: View {
         let m = seconds / 60
         let s = seconds % 60
         return String(format: "%d:%02d", m, s)
+    }
+
+    private func currentSelectedIndexOrNearest(to time: Double) -> Int? {
+        if let sel = selectedShotID, let idx = shots.firstIndex(where: { $0.id == sel }) { return idx }
+        // Fallback: nearest by absolute time
+        let pairs = shots.enumerated().map { ($0.offset, abs($0.element.time - time)) }
+        return pairs.min(by: { $0.1 < $1.1 })?.0
     }
 }
 

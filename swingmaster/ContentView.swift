@@ -29,7 +29,7 @@ struct ContentView: View {
                     let savedURL = VideoStorage.saveVideo(from: tempURL)
                     let duration = VideoStorage.getDurationSeconds(for: savedURL)
                     analysisDuration = duration > 0 ? duration : 90
-                    analysisShots = Array<MockShot>.sampleShots(duration: analysisDuration)
+                    analysisShots = MockSwingDetector.detectSwings(in: savedURL)
                     analysisVideoURL = savedURL
                     sessionStore.save(videoURL: savedURL, shotCount: analysisShots.count)
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -46,7 +46,7 @@ struct ContentView: View {
                     let url = session.videoURL
                     let duration = VideoStorage.getDurationSeconds(for: url)
                     analysisDuration = duration > 0 ? duration : 92
-                    analysisShots = Array<MockShot>.sampleShots(duration: analysisDuration)
+                    analysisShots = MockSwingDetector.detectSwings(in: url)
                     analysisVideoURL = url
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         screen = .analysis
