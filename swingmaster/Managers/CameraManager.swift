@@ -130,6 +130,14 @@ final class CameraManager: NSObject, ObservableObject {
     func startRecording(maxDuration: TimeInterval = 10) {
         guard !movieOutput.isRecording else { return }
 
+        // Defensive: ensure session is running and we have a video connection before starting.
+        guard session.isRunning, movieOutput.connection(with: .video) != nil else {
+            DispatchQueue.main.async {
+                self.errorMessage = "Camera not available to record."
+            }
+            return
+        }
+
         let tempURL = Self.temporaryMovieURL()
         // Configure max duration
         movieOutput.maxRecordedDuration = CMTime(seconds: maxDuration, preferredTimescale: 30)

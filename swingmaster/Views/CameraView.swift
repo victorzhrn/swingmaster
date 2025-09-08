@@ -18,6 +18,7 @@ struct CameraView: View {
     @State private var timer: Timer?
     @State private var recordedSegments: [URL] = []
     @State private var finishingSession: Bool = false
+    @State private var isProcessing: Bool = false
 
     let onRecorded: (URL) -> Void
     let onShowHistory: () -> Void
@@ -74,23 +75,43 @@ struct CameraView: View {
                                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                                 impactFeedback.impactOccurred()
 
-                                if camera.isRecording {
-                                    camera.pause()
-                                    stopTimer()
-                                } else if camera.isPaused {
-                                    camera.resume()
-                                    startTimer()
+                                if isProcessing { return }
+                                if isRunningInPreview {
+                                    // Simulate recording in previews without AVFoundation
+                                    if camera.isRecording {
+                                        camera.pause()
+                                        stopTimer()
+                                    } else if camera.isPaused {
+                                        camera.resume()
+                                        startTimer()
+                                    } else {
+                                        elapsedTime = 0
+                                        recordedSegments.removeAll()
+                                        finishingSession = false
+                                        // Simulate start (no real recording)
+                                        camera.isRecording = true
+                                        startTimer()
+                                    }
                                 } else {
-                                    elapsedTime = 0
-                                    recordedSegments.removeAll()
-                                    finishingSession = false
-                                    camera.start()
-                                    startTimer()
+                                    if camera.isRecording {
+                                        camera.pause()
+                                        stopTimer()
+                                    } else if camera.isPaused {
+                                        camera.resume()
+                                        startTimer()
+                                    } else {
+                                        elapsedTime = 0
+                                        recordedSegments.removeAll()
+                                        finishingSession = false
+                                        camera.start()
+                                        startTimer()
+                                    }
                                 }
                             }) {
                                 Text(camera.isRecording ? "PAUSE" : (camera.isPaused ? "RESUME" : "START"))
                             }
                             .buttonStyle(RecordingButtonStyle(fillColor: camera.isRecording ? .yellow : .green))
+                            .disabled(isProcessing)
                             Spacer()
                         }
 
@@ -110,16 +131,33 @@ struct CameraView: View {
                                     impactFeedback.impactOccurred()
                                     finishingSession = true
                                     stopTimer()
-                                    if camera.isRecording {
+                                    if isProcessing { return }
+                                    if isRunningInPreview {
+                                        // Simulate stop & deliver a mock URL after 2s
+                                        camera.isRecording = false
+                                        isProcessing = true
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                            let fakeURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("preview.mov")
+                                            onRecorded(fakeURL)
+                                            isProcessing = false
+                                            resetToIdle()
+                                        }
+                                    } else if camera.isRecording {
                                         camera.stopRecording()
                                     } else if let last = recordedSegments.last {
-                                        onRecorded(last)
-                                        resetToIdle()
+                                        // Already have a segment; show processing overlay then navigate
+                                        isProcessing = true
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                            onRecorded(last)
+                                            isProcessing = false
+                                            resetToIdle()
+                                        }
                                     }
                                 }) {
                                     Text("END")
                                 }
                                 .buttonStyle(RecordingButtonStyle(fillColor: .red))
+                                .disabled(isProcessing)
                             }
                         }
                     }
@@ -191,11 +229,32 @@ struct CameraView: View {
                 // Accumulate segments. Only navigate on END.
                 recordedSegments.append(url)
                 if finishingSession {
-                    onRecorded(url)
-                    resetToIdle()
+                    // Show processing before navigating to analysis
+                    isProcessing = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        onRecorded(url)
+                        isProcessing = false
+                        resetToIdle()
+                    }
                 }
             }
         }
+        .overlay(
+            Group {
+                if isProcessing {
+                    ZStack {
+                        Color.black.opacity(0.5).ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            Text("Processing…")
+                                .foregroundColor(.white)
+                                .font(.system(size: 16, weight: .semibold))
+                        }
+                    }
+                }
+            }
+        )
     }
 
     private func requestPermissionsAndSetup() {

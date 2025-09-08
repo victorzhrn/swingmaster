@@ -19,27 +19,40 @@ struct AnalysisView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Video placeholder area (replace with AVPlayer integration later)
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.black)
-                    .overlay(
+            // Real video when available, otherwise placeholder
+            Group {
+                if let url = videoURL {
+                    VideoPlayerView(url: url)
+                        .frame(height: 320)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                        .accessibilityLabel("Video player")
+                } else {
+                    ZStack {
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
-                VStack(spacing: 8) {
-                    Image(systemName: "play.rectangle.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.white.opacity(0.9))
-                    Text(timeString(currentTime) + " / " + timeString(duration))
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.9))
+                            .fill(Color.black)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                        VStack(spacing: 8) {
+                            Image(systemName: "play.rectangle.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(.white.opacity(0.9))
+                            Text(timeString(currentTime) + " / " + timeString(duration))
+                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                    }
+                    .frame(height: 320)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Video player")
+                    .accessibilityValue("Time \(timeString(currentTime)) of \(timeString(duration))")
                 }
             }
-            .frame(height: 320)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Video player")
-            .accessibilityValue("Time \(timeString(currentTime)) of \(timeString(duration))")
 
             // Timeline Strip (visual + adjustable)
             TimelineStrip(duration: duration, shots: shots, selectedShotID: $selectedShotID, currentTime: $currentTime)

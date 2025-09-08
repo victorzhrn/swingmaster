@@ -7,45 +7,12 @@
 
 import SwiftUI
 
-/// Represents a previously recorded practice session (mocked in Phase 1).
-/// - Properties:
-///   - id: Stable identifier
-///   - date: Human-friendly date label (e.g., "Today 2:30 PM")
-///   - shotCount: Number of detected swings
-///   - videoURL: Placeholder string path/url
-///   - thumbnailSystemName: SF Symbol used as the thumbnail placeholder
-struct MockSession: Identifiable {
-    let id = UUID()
-    let date: String
-    let shotCount: Int
-    let videoURL: String
-    let thumbnailSystemName: String
-}
-
-/// Supplies mock sessions for Phase 1 UI.
-enum MockDataProvider {
-    static let sessions: [MockSession] = [
-        MockSession(date: "Today 2:30 PM", shotCount: 5, videoURL: "mock://today", thumbnailSystemName: "video"),
-        MockSession(date: "Yesterday", shotCount: 3, videoURL: "mock://yesterday", thumbnailSystemName: "video"),
-        MockSession(date: "Jan 21", shotCount: 8, videoURL: "mock://jan21", thumbnailSystemName: "video"),
-        MockSession(date: "Jan 20", shotCount: 12, videoURL: "mock://jan20", thumbnailSystemName: "video"),
-        MockSession(date: "Jan 18", shotCount: 4, videoURL: "mock://jan18", thumbnailSystemName: "video")
-    ]
-}
-
-/// Phase 1 History list.
-/// Displays 5 hardcoded sessions; selecting a row triggers `onSelect`.
-/// - Usage:
-/// ```swift
-/// HistoryView { session in
-///     // Navigate to analysis with `session`
-/// }
-/// ```
+/// History list backed by saved sessions (newest first).
 struct HistoryView: View {
-    let sessions: [MockSession]
-    let onSelect: (MockSession) -> Void
+    let sessions: [Session]
+    let onSelect: (Session) -> Void
 
-    init(sessions: [MockSession] = MockDataProvider.sessions, onSelect: @escaping (MockSession) -> Void = { _ in }) {
+    init(sessions: [Session], onSelect: @escaping (Session) -> Void) {
         self.sessions = sessions
         self.onSelect = onSelect
     }
@@ -66,7 +33,7 @@ struct HistoryView: View {
 
 /// Visual representation of a single session row.
 private struct HistoryRow: View {
-    let session: MockSession
+    let session: Session
 
     var body: some View {
         HStack(spacing: 12) {
@@ -74,13 +41,15 @@ private struct HistoryRow: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(LinearGradient(colors: [Color.gray.opacity(0.6), Color.gray.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 64, height: 40)
-                Image(systemName: session.thumbnailSystemName)
-                    .foregroundColor(.white)
-                    .opacity(0.9)
+                Image(uiImage: VideoStorage.generateThumbnail(for: session.videoURL) ?? UIImage())
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 64, height: 40)
+                    .clipped()
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(session.date)
+                Text(Self.dateString(session.date))
                     .foregroundColor(.white)
                     .font(.system(size: 16, weight: .semibold))
                 Text("\(session.shotCount) shots")
@@ -95,12 +64,20 @@ private struct HistoryRow: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(session.date), \(session.shotCount) shots")
+        .accessibilityLabel("\(Self.dateString(session.date)), \(session.shotCount) shots")
+    }
+
+    private static func dateString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f.string(from: date)
     }
 }
 
 #Preview("HistoryView") {
-    HistoryView()
+    let fake = Session(id: UUID(), date: Date(), videoPath: "/tmp/preview.mov", shotCount: 4)
+    return HistoryView(sessions: [fake]) { _ in }
         .preferredColorScheme(.dark)
 }
 

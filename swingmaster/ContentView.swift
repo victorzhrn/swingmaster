@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var sessionStore = SessionStore()
     private enum Screen {
         case camera
         case history
@@ -17,13 +18,23 @@ struct ContentView: View {
     @State private var screen: Screen = .camera
     @State private var analysisShots: [MockShot] = []
     @State private var analysisDuration: Double = 0
+    @State private var analysisVideoURL: URL?
 
     var body: some View {
         ZStack {
             switch screen {
             case .camera:
-                CameraView(onRecorded: { _ in
-                    // TODO: Navigate to AnalysisView with recorded URL in later phase
+                CameraView(onRecorded: { tempURL in
+                    // Persist video, create session entry, and navigate with real URL & mock shots
+                    let savedURL = VideoStorage.saveVideo(from: tempURL)
+                    let duration = VideoStorage.getDurationSeconds(for: savedURL)
+                    analysisDuration = duration > 0 ? duration : 90
+                    analysisShots = Array<MockShot>.sampleShots(duration: analysisDuration)
+                    analysisVideoURL = savedURL
+                    sessionStore.save(videoURL: savedURL, shotCount: analysisShots.count)
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        screen = .analysis
+                    }
                 }, onShowHistory: {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         screen = .history
@@ -31,10 +42,12 @@ struct ContentView: View {
                 })
 
             case .history:
-                HistoryView { _ in
-                    // Navigate to mock AnalysisView with sample data
-                    analysisDuration = 92
+                HistoryView(sessions: sessionStore.sessions) { session in
+                    let url = session.videoURL
+                    let duration = VideoStorage.getDurationSeconds(for: url)
+                    analysisDuration = duration > 0 ? duration : 92
                     analysisShots = Array<MockShot>.sampleShots(duration: analysisDuration)
+                    analysisVideoURL = url
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         screen = .analysis
                     }
@@ -42,7 +55,7 @@ struct ContentView: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
 
             case .analysis:
-                AnalysisView(videoURL: nil, duration: analysisDuration, shots: analysisShots)
+                AnalysisView(videoURL: analysisVideoURL, duration: analysisDuration, shots: analysisShots)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
