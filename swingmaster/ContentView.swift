@@ -11,9 +11,12 @@ struct ContentView: View {
     private enum Screen {
         case camera
         case history
+        case analysis
     }
 
     @State private var screen: Screen = .camera
+    @State private var analysisShots: [MockShot] = []
+    @State private var analysisDuration: Double = 0
 
     var body: some View {
         ZStack {
@@ -29,17 +32,30 @@ struct ContentView: View {
 
             case .history:
                 HistoryView { _ in
-                    // TODO: push to AnalysisView in Phase 3
+                    // Navigate to mock AnalysisView with sample data
+                    analysisDuration = 92
+                    analysisShots = Array<MockShot>.sampleShots(duration: analysisDuration)
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        screen = .analysis
+                    }
                 }
                 .transition(.move(edge: .trailing).combined(with: .opacity))
+
+            case .analysis:
+                AnalysisView(videoURL: nil, duration: analysisDuration, shots: analysisShots)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
-            if screen == .history {
+            if screen == .history || screen == .analysis {
                 VStack {
                     HStack {
                         Button(action: {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                screen = .camera
+                                if screen == .analysis {
+                                    screen = .history
+                                } else {
+                                    screen = .camera
+                                }
                             }
                         }) {
                             Image(systemName: "chevron.left")
