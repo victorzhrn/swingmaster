@@ -13,7 +13,25 @@ struct Session: Identifiable, Codable, Equatable {
     let videoPath: String
     let shotCount: Int
 
-    var videoURL: URL { URL(fileURLWithPath: videoPath) }
+    /// Resolves the stored `videoPath` into a usable file URL.
+    /// We store only the file name for stability across reinstalls.
+    /// If an absolute path was stored previously, migrate by falling back to its lastPathComponent.
+    var videoURL: URL {
+        let fileManager = FileManager.default
+        if videoPath.hasPrefix("/") {
+            let absolute = URL(fileURLWithPath: videoPath)
+            if fileManager.fileExists(atPath: absolute.path) {
+                return absolute
+            }
+            // Fall back to Documents/<lastPathComponent>
+            let fileName = absolute.lastPathComponent
+            let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+            return docs.appendingPathComponent(fileName)
+        } else {
+            let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+            return docs.appendingPathComponent(videoPath)
+        }
+    }
 }
 
 final class SessionStore: ObservableObject {
@@ -26,7 +44,9 @@ final class SessionStore: ObservableObject {
     }
 
     func save(videoURL: URL, shotCount: Int) {
-        let session = Session(id: UUID(), date: Date(), videoPath: videoURL.path, shotCount: shotCount)
+        // Persist only the file name for stability across container changes
+        let fileName = videoURL.lastPathComponent
+        let session = Session(id: UUID(), date: Date(), videoPath: fileName, shotCount: shotCount)
         sessions.insert(session, at: 0)
         persist()
     }
@@ -51,7 +71,18 @@ final class SessionStore: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         if let decoded = try? decoder.decode([Session].self, from: data) {
-            sessions = decoded
+            // Migrate any entries that stored absolute paths to just file names
+            let migrated: [Session] = decoded.map { s in
+                let fileName = URL(fileURLWithPath: s.videoPath).lastPathComponent
+                if fileName != s.videoPath {
+                    return Session(id: s.id, date: s.date, videoPath: fileName, shotCount: s.shotCount)
+                }
+                return s
+            }
+            sessions = migrated
+            if migrated != decoded {
+                persist()
+            }
         }
     }
 }
