@@ -22,13 +22,24 @@ struct CameraView: View {
     let onRecorded: (URL) -> Void
     let onShowHistory: () -> Void
 
+    /// Returns true when rendering inside Xcode Previews so that we can bypass
+    /// hardware permissions/session setup and still display the intended UI.
+    private var isRunningInPreview: Bool {
+        ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
+
     var body: some View {
         ZStack {
-            if camera.cameraAuthStatus == .authorized && camera.micAuthGranted {
+            if (camera.cameraAuthStatus == .authorized && camera.micAuthGranted) || isRunningInPreview {
                 // Embedded preview wrapper around AVCaptureVideoPreviewLayer.
                 // Kept local to reduce files since it's not reused elsewhere.
-                PreviewBridge(session: camera.captureSession)
-                    .ignoresSafeArea()
+                if isRunningInPreview {
+                    // Placeholder background in Previews
+                    Color.black.ignoresSafeArea()
+                } else {
+                    PreviewBridge(session: camera.captureSession)
+                        .ignoresSafeArea()
+                }
 
                 // Skeleton overlay (static for now)
                 Image(systemName: "figure.walk")
@@ -171,7 +182,9 @@ struct CameraView: View {
             }
         }
         .onAppear {
-            requestPermissionsAndSetup()
+            if !isRunningInPreview {
+                requestPermissionsAndSetup()
+            }
         }
         .onChange(of: camera.lastRecordedURL) { _, newURL in
             if let url = newURL {
