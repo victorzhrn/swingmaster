@@ -1,0 +1,188 @@
+//
+//  CameraManager.swift
+//  swingmaster
+//
+//  Manages the camera capture session, permissions, and basic movie recording.
+//  Aligned with Core Architecture: kept lightweight and UI-agnostic so it can be
+//  extended later to stream frames into Vision (PoseProcessor) without changing UI.
+//
+
+import Foundation
+import AVFoundation
+
+/// CameraManager is responsible for:
+/// - Requesting camera & microphone permissions
+/// - Configuring and owning an AVCaptureSession
+/// - Starting/stopping the session
+/// - Starting/stopping basic movie recording with auto-stop at max duration
+///
+/// Notes:
+/// - "Pause/Resume" is modeled as toggling recording on/off. Resuming starts a new clip.
+///   Concatenation is out of scope for MVP and can be added later in the processing pipeline.
+final class CameraManager: NSObject, ObservableObject {
+    @Published var isSessionRunning: Bool = false
+    @Published var isRecording: Bool = false
+    @Published var isPaused: Bool = false
+    @Published var cameraAuthStatus: AVAuthorizationStatus = .notDetermined
+    @Published var micAuthGranted: Bool = false
+    @Published var lastRecordedURL: URL?
+    @Published var errorMessage: String?
+
+    private let session = AVCaptureSession()
+    private let movieOutput = AVCaptureMovieFileOutput()
+    private let sessionQueue = DispatchQueue(label: "com.swingmaster.camera.session")
+
+    /// Exposes the session for preview rendering.
+    var captureSession: AVCaptureSession { session }
+
+    // MARK: - Permissions
+
+    /// Requests camera and microphone permissions concurrently.
+    func requestPermissions(completion: @escaping (_ cameraGranted: Bool, _ micGranted: Bool) -> Void) {
+        let group = DispatchGroup()
+        var cameraGranted = false
+        var micGranted = false
+
+        group.enter()
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            cameraGranted = granted
+            let status = AVCaptureDevice.authorizationStatus(for: .video)
+            DispatchQueue.main.async {
+                self.cameraAuthStatus = status
+            }
+            group.leave()
+        }
+
+        group.enter()
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            micGranted = granted
+            DispatchQueue.main.async {
+                self.micAuthGranted = granted
+            }
+            group.leave()
+        }
+
+        group.notify(queue: .main) {
+            completion(cameraGranted, micGranted)
+        }
+    }
+
+    // MARK: - Session Lifecycle
+
+    /// Configures inputs/outputs. Safe to call multiple times; does nothing if already configured.
+    func configureSessionIfNeeded() {
+        sessionQueue.async {
+            guard self.session.inputs.isEmpty else { return }
+
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .high
+
+            do {
+                // Video input (back camera)
+                if let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) {
+                    let videoInput = try AVCaptureDeviceInput(device: videoDevice)
+                    if self.session.canAddInput(videoInput) {
+                        self.session.addInput(videoInput)
+                    }
+                }
+
+                // Audio input (microphone)
+                if let audioDevice = AVCaptureDevice.default(for: .audio) {
+                    let audioInput = try AVCaptureDeviceInput(device: audioDevice)
+                    if self.session.canAddInput(audioInput) {
+                        self.session.addInput(audioInput)
+                    }
+                }
+
+                // Movie output
+                if self.session.canAddOutput(self.movieOutput) {
+                    self.session.addOutput(self.movieOutput)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.errorMessage = "Camera configuration failed: \(error.localizedDescription)"
+                }
+            }
+
+            self.session.commitConfiguration()
+        }
+    }
+
+    func startSession() {
+        sessionQueue.async {
+            guard !self.session.isRunning else { return }
+            self.session.startRunning()
+            DispatchQueue.main.async { self.isSessionRunning = true }
+        }
+    }
+
+    func stopSession() {
+        sessionQueue.async {
+            guard self.session.isRunning else { return }
+            self.session.stopRunning()
+            DispatchQueue.main.async { self.isSessionRunning = false }
+        }
+    }
+
+    // MARK: - Recording
+
+    /// Starts recording to a temporary file and auto-stops at `maxDuration` seconds.
+    func startRecording(maxDuration: TimeInterval = 10) {
+        guard !movieOutput.isRecording else { return }
+
+        let tempURL = Self.temporaryMovieURL()
+        // Configure max duration
+        movieOutput.maxRecordedDuration = CMTime(seconds: maxDuration, preferredTimescale: 30)
+        movieOutput.startRecording(to: tempURL, recordingDelegate: self)
+
+        DispatchQueue.main.async {
+            self.isRecording = true
+            self.isPaused = false
+        }
+    }
+
+    func stopRecording() {
+        guard movieOutput.isRecording else { return }
+        movieOutput.stopRecording()
+        DispatchQueue.main.async { self.isRecording = false }
+    }
+
+    /// UI-level semantic controls matching the Start/Pause/Resume button behavior.
+    func start() {
+        startRecording()
+    }
+
+    func pause() {
+        // For MVP, treat pause as stop recording; preview continues.
+        stopRecording()
+        DispatchQueue.main.async { self.isPaused = true }
+    }
+
+    func resume() {
+        // Start a new clip on resume.
+        startRecording()
+        DispatchQueue.main.async { self.isPaused = false }
+    }
+
+    private static func temporaryMovieURL() -> URL {
+        let fileName = UUID().uuidString + ".mov"
+        return URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(fileName)
+    }
+}
+
+// MARK: - AVCaptureFileOutputRecordingDelegate
+
+extension CameraManager: AVCaptureFileOutputRecordingDelegate {
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        DispatchQueue.main.async {
+            if let error = error {
+                self.errorMessage = "Recording failed: \(error.localizedDescription)"
+            } else {
+                self.lastRecordedURL = outputFileURL
+            }
+            self.isRecording = false
+        }
+    }
+}
+
+
