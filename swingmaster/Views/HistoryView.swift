@@ -41,7 +41,7 @@ private struct HistoryRow: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(LinearGradient(colors: [Color.gray.opacity(0.6), Color.gray.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 64, height: 40)
-                Image(uiImage: VideoStorage.generateThumbnail(for: session.videoURL) ?? UIImage())
+                Image(uiImage: VideoStorage.generateThumbnail(for: session.videoURL, at: 1.0) ?? UIImage())
                     .resizable()
                     .scaledToFill()
                     .frame(width: 64, height: 40)

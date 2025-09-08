@@ -9,6 +9,8 @@
 import SwiftUI
 import AVFoundation
 import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct CameraView: View {
     @StateObject private var camera = CameraManager()
@@ -19,6 +21,7 @@ struct CameraView: View {
     @State private var recordedSegments: [URL] = []
     @State private var finishingSession: Bool = false
     @State private var isProcessing: Bool = false
+    @State private var showingPicker: Bool = false
 
     let onRecorded: (URL) -> Void
     let onShowHistory: () -> Void
@@ -58,7 +61,7 @@ struct CameraView: View {
                         // Left slot (Upload) — hidden during active session
                         HStack {
                             if !(camera.isRecording || camera.isPaused) {
-                                Button(action: { /* TODO: hook PHPicker in Phase 4 */ }) {
+                                Button(action: { requestPhotosAndPresentPicker() }) {
                                     Image(systemName: "folder")
                                         .font(.system(size: 24, weight: .regular))
                                         .foregroundColor(.white)
@@ -255,6 +258,17 @@ struct CameraView: View {
                 }
             }
         )
+        .sheet(isPresented: $showingPicker) {
+            VideoPicker { pickedTempURL in
+                // Show processing for 3 seconds, then delegate to onRecorded
+                isProcessing = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    onRecorded(pickedTempURL)
+                    isProcessing = false
+                }
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private func requestPermissionsAndSetup() {
@@ -292,6 +306,12 @@ struct CameraView: View {
         camera.isPaused = false
         elapsedTime = 0
         recordedSegments.removeAll()
+    }
+
+    // MARK: - Photos Picker
+
+    private func requestPhotosAndPresentPicker() {
+        showingPicker = true
     }
 }
 
@@ -342,6 +362,58 @@ private struct PreviewBridge: UIViewRepresentable {
 private final class PreviewView: UIView {
     override static var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
     var videoPreviewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+}
+
+
+// MARK: - VideoPicker (PHPicker wrapper)
+
+private struct VideoPicker: UIViewControllerRepresentable {
+    let onPicked: (URL) -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.filter = .videos
+        configuration.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPicked: onPicked) }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let onPicked: (URL) -> Void
+
+        init(onPicked: @escaping (URL) -> Void) {
+            self.onPicked = onPicked
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            picker.dismiss(animated: true)
+            guard let result = results.first else { return }
+            let provider = result.itemProvider
+            let movieIdentifier = UTType.movie.identifier
+            if provider.hasItemConformingToTypeIdentifier(movieIdentifier) {
+                provider.loadFileRepresentation(forTypeIdentifier: movieIdentifier) { url, error in
+                    guard let url = url else { return }
+                    // Copy to a new temp location we control
+                    let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+                    let dest = tempDir.appendingPathComponent(UUID().uuidString + ".mov")
+                    do {
+                        if FileManager.default.fileExists(atPath: dest.path) {
+                            try FileManager.default.removeItem(at: dest)
+                        }
+                        try FileManager.default.copyItem(at: url, to: dest)
+                        DispatchQueue.main.async { self.onPicked(dest) }
+                    } catch {
+                        // Ignore failure silently for MVP
+                    }
+                }
+            }
+        }
+    }
 }
 
 
