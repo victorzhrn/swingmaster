@@ -42,9 +42,19 @@ struct ContentView: View {
             case .history:
                 HistoryView(sessions: sessionStore.sessions) { session in
                     let url = session.videoURL
-                    pendingVideoURL = url
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        screen = .processing
+                    // Try to load existing analysis. If available, jump straight to AnalysisView.
+                    if let persisted = AnalysisStore.load(videoURL: url) {
+                        analysisVideoURL = url
+                        analysisDuration = persisted.duration
+                        analysisShots = persisted.shots
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            screen = .analysis
+                        }
+                    } else {
+                        pendingVideoURL = url
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            screen = .processing
+                        }
                     }
                 }
                 .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -63,6 +73,8 @@ struct ContentView: View {
                             let score = max(0, min(10, res.score))
                             return MockShot(time: t, type: st, score: score, issue: res.primaryInsight)
                         }
+                        // Persist analysis for future visits
+                        AnalysisStore.save(videoURL: url, duration: analysisDuration, shots: analysisShots)
                         sessionStore.save(videoURL: url, shotCount: analysisShots.count)
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             screen = .analysis
