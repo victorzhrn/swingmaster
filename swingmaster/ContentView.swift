@@ -12,6 +12,7 @@ struct ContentView: View {
     private enum Screen {
         case camera
         case history
+        case processing
         case analysis
     }
 
@@ -19,21 +20,18 @@ struct ContentView: View {
     @State private var analysisShots: [MockShot] = []
     @State private var analysisDuration: Double = 0
     @State private var analysisVideoURL: URL?
+    @State private var pendingVideoURL: URL?
 
     var body: some View {
         ZStack {
             switch screen {
             case .camera:
                 CameraView(onRecorded: { tempURL in
-                    // Persist video, create session entry, and navigate with real URL & mock shots
+                    // Persist then go to processing view
                     let savedURL = VideoStorage.saveVideo(from: tempURL)
-                    let duration = VideoStorage.getDurationSeconds(for: savedURL)
-                    analysisDuration = duration > 0 ? duration : 90
-                    analysisShots = MockSwingDetector.detectSwings(in: savedURL)
-                    analysisVideoURL = savedURL
-                    sessionStore.save(videoURL: savedURL, shotCount: analysisShots.count)
+                    pendingVideoURL = savedURL
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        screen = .analysis
+                        screen = .processing
                     }
                 }, onShowHistory: {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -44,15 +42,38 @@ struct ContentView: View {
             case .history:
                 HistoryView(sessions: sessionStore.sessions) { session in
                     let url = session.videoURL
-                    let duration = VideoStorage.getDurationSeconds(for: url)
-                    analysisDuration = duration > 0 ? duration : 92
-                    analysisShots = MockSwingDetector.detectSwings(in: url)
-                    analysisVideoURL = url
+                    pendingVideoURL = url
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        screen = .analysis
+                        screen = .processing
                     }
                 }
                 .transition(.move(edge: .trailing).combined(with: .opacity))
+
+            case .processing:
+                if let url = pendingVideoURL {
+                    ProcessingView(videoURL: url,
+                                   geminiAPIKey: "AIzaSyDWvavah1RCf7acKBESKtp_vdVNf7cii8w",
+                                   onComplete: { results in
+                        // Map to current AnalysisView using mock-like entries for now
+                        analysisVideoURL = url
+                        analysisDuration = max(1, VideoStorage.getDurationSeconds(for: url))
+                        analysisShots = results.enumerated().map { idx, res in
+                            let t = res.segment.startTime
+                            let st: ShotType = .forehand // Placeholder until AnalysisView supports real results
+                            let score = max(0, min(10, res.score))
+                            return MockShot(time: t, type: st, score: score, issue: res.primaryInsight)
+                        }
+                        sessionStore.save(videoURL: url, shotCount: analysisShots.count)
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            screen = .analysis
+                        }
+                    }, onCancel: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            screen = .camera
+                        }
+                    })
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
 
             case .analysis:
                 AnalysisView(videoURL: analysisVideoURL, duration: analysisDuration, shots: analysisShots)

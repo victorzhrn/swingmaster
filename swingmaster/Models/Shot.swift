@@ -10,7 +10,7 @@ import SwiftUI
 
 /// Represents the type of a tennis shot.
 /// Provides UI affordances like short labels and associated colors.
-enum ShotType: String, Codable, CaseIterable, Sendable {
+public enum ShotType: String, Codable, CaseIterable, Sendable {
     case forehand
     case backhand
     case serve

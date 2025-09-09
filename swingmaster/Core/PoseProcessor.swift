@@ -43,8 +43,9 @@ final class PoseProcessor {
     }
 
     /// Process a video file at a reduced sampling rate (~10 fps) to control cost.
+    /// - Parameter progress: Optional callback reporting 0..1 extraction progress.
     /// - Returns: Array of PoseFrame in chronological order.
-    func processVideoFile(_ url: URL, targetFPS: Double = 10.0) async -> [PoseFrame] {
+    func processVideoFile(_ url: URL, targetFPS: Double = 10.0, progress: ((Float) -> Void)? = nil) async -> [PoseFrame] {
         var frames: [PoseFrame] = []
 
         let asset = AVAsset(url: url)
@@ -64,6 +65,7 @@ final class PoseProcessor {
             let stride = max(1, Int(round(nominalFrameRate / max(1.0, targetFPS))))
             var index = 0
 
+            let totalDuration = CMTimeGetSeconds(asset.duration)
             while reader.status == .reading, let sample = output.copyNextSampleBuffer() {
                 defer { CMSampleBufferInvalidate(sample) }
                 index += 1
@@ -75,11 +77,16 @@ final class PoseProcessor {
                 if let pf = await processFrame(pixelBuffer, timestamp: ts) {
                     frames.append(pf)
                 }
+                if totalDuration.isFinite && totalDuration > 0 {
+                    let ratio = max(0, min(1, Float(ts / totalDuration)))
+                    progress?(ratio)
+                }
             }
         } catch {
             return frames
         }
 
+        progress?(1.0)
         return frames
     }
 
