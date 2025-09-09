@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 struct AnalysisView: View {
     let videoURL: URL?
@@ -16,20 +17,44 @@ struct AnalysisView: View {
     @State private var selectedShotID: MockShot.ID?
     @State private var currentTime: Double = 0
     @State private var isPlaying: Bool = false
+    @State private var playingSegment: MockShot? = nil
+    @State private var showPlaybackControls: Bool = false
 
     var body: some View {
         VStack(spacing: 12) {
             // Real video when available, otherwise placeholder
             Group {
                 if let url = videoURL {
-                    VideoPlayerView(url: url, currentTime: $currentTime, isPlaying: $isPlaying)
-                        .frame(height: 320)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                        )
-                        .accessibilityLabel("Video player")
+                    VideoPlayerView(
+                        url: url,
+                        currentTime: $currentTime,
+                        isPlaying: $isPlaying,
+                        segmentStart: playingSegment?.startTime,
+                        segmentEnd: playingSegment?.endTime,
+                        onSegmentComplete: {
+                            // Segment playback completed
+                            playingSegment = nil
+                        }
+                    )
+                    .frame(height: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                    .overlay(alignment: .bottom) {
+                        // Custom playback controls overlay
+                        if showPlaybackControls {
+                            playbackControlsOverlay
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3)) {
+                            showPlaybackControls.toggle()
+                        }
+                    }
+                    .accessibilityLabel("Video player")
                 } else {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12)
@@ -54,9 +79,18 @@ struct AnalysisView: View {
                 }
             }
 
-            // Timeline Strip (visual + adjustable)
-            TimelineStrip(duration: duration, shots: shots, selectedShotID: $selectedShotID, currentTime: $currentTime)
-                .padding(.horizontal, 16)
+            // Enhanced Timeline Strip with segment expansion
+            TimelineStripEnhanced(
+                duration: duration,
+                shots: shots,
+                selectedShotID: $selectedShotID,
+                currentTime: $currentTime,
+                isPlaying: $isPlaying,
+                onPlaySegment: { shot in
+                    playSegment(shot)
+                }
+            )
+            .padding(.horizontal, 16)
 
             // Chips Row (primary large tap targets) with prev/next
             ShotChipsRow(shots: shots, selectedShotID: $selectedShotID, onPrev: selectPrev, onNext: selectNext)
@@ -74,30 +108,62 @@ struct AnalysisView: View {
             if selectedShotID == nil, let first = shots.first { selectedShotID = first.id; currentTime = first.time }
         }
         .onChange(of: selectedShotID) { _, newID in
-            // Seek video when selection changes
+            // Auto-play the selected swing segment
             if let id = newID, let shot = shots.first(where: { $0.id == id }) {
-                currentTime = shot.time
+                playSegment(shot)
             }
         }
         .onChange(of: currentTime) { _, t in
-            // Auto-advance selection while playing, with hysteresis between markers
-            guard isPlaying, !shots.isEmpty else { return }
-            guard let currentIndex = currentSelectedIndexOrNearest(to: t) else { return }
-            let idx = currentIndex
-            // Decide if we cross midpoint to next or previous
-            if idx < shots.count - 1 {
-                let midToNext = (shots[idx].time + shots[idx + 1].time) / 2
-                if t >= midToNext - 0.05 { selectedShotID = shots[idx + 1].id }
-            }
-            if idx > 0 {
-                let midToPrev = (shots[idx - 1].time + shots[idx].time) / 2
-                if t < midToPrev + 0.05 { selectedShotID = shots[idx - 1].id }
+            // Update selection based on current playback position
+            guard isPlaying, !shots.isEmpty, playingSegment == nil else { return }
+            
+            // Find which shot contains current time
+            if let containingShot = shots.first(where: { t >= $0.startTime && t <= $0.endTime }) {
+                if selectedShotID != containingShot.id {
+                    selectedShotID = containingShot.id
+                }
             }
         }
         .preferredColorScheme(.dark)
     }
 
     // MARK: - Subviews
+    
+    private var playbackControlsOverlay: some View {
+        HStack(spacing: 20) {
+            Button(action: { 
+                isPlaying.toggle()
+                if !isPlaying { playingSegment = nil }
+            }) {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+            }
+            
+            if let segment = playingSegment {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Playing \(segment.type.accessibleName)")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("\(timeString(segment.startTime)) - \(timeString(segment.endTime))")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                }
+                .foregroundColor(.white.opacity(0.9))
+            }
+            
+            Spacer()
+            
+            Button(action: replaySegment) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 18))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+    }
 
     private var insightCard: some View {
         let selected = shots.first(where: { $0.id == selectedShotID })
@@ -134,13 +200,36 @@ struct AnalysisView: View {
     }
 
     // MARK: - Actions
+    
+    private func playSegment(_ shot: MockShot) {
+        playingSegment = shot
+        currentTime = shot.startTime
+        isPlaying = true
+        showPlaybackControls = true
+        
+        // Hide controls after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation {
+                showPlaybackControls = false
+            }
+        }
+    }
+    
+    private func replaySegment() {
+        if let segment = playingSegment {
+            currentTime = segment.startTime
+            isPlaying = true
+        } else if let id = selectedShotID, let shot = shots.first(where: { $0.id == id }) {
+            playSegment(shot)
+        }
+    }
 
     private func selectPrev() {
         guard let id = selectedShotID, let idx = shots.firstIndex(where: { $0.id == id }) else { return }
         let newIndex = max(idx - 1, 0)
         let shot = shots[newIndex]
         selectedShotID = shot.id
-        currentTime = shot.time
+        playSegment(shot)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
@@ -149,7 +238,7 @@ struct AnalysisView: View {
         let newIndex = min(idx + 1, shots.count - 1)
         let shot = shots[newIndex]
         selectedShotID = shot.id
-        currentTime = shot.time
+        playSegment(shot)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 

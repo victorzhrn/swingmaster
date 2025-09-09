@@ -50,17 +50,27 @@ public enum ShotType: String, Codable, CaseIterable, Sendable {
 /// Simple model representing a detected or mock shot in a session.
 struct MockShot: Identifiable, Hashable, Codable {
     let id: UUID
-    let time: Double
+    let time: Double  // Center time of the swing (kept for compatibility)
+    let startTime: Double  // Start of the swing segment
+    let endTime: Double    // End of the swing segment
     let type: ShotType
     let score: Float
     let issue: String
 
-    init(id: UUID = UUID(), time: Double, type: ShotType, score: Float, issue: String) {
+    init(id: UUID = UUID(), time: Double, type: ShotType, score: Float, issue: String, startTime: Double? = nil, endTime: Double? = nil) {
         self.id = id
         self.time = time
+        // Default to 1 second swing duration if not specified
+        self.startTime = startTime ?? Swift.max(0, time - 0.5)
+        self.endTime = endTime ?? (time + 0.5)
         self.type = type
         self.score = score
         self.issue = issue
+    }
+    
+    /// Duration of the swing in seconds
+    var duration: Double {
+        return endTime - startTime
     }
 }
 
@@ -79,7 +89,12 @@ extension Array where Element == MockShot {
             "Great extension"
         ]
         return zip(times.indices, times).map { idx, t in
-            MockShot(time: t, type: types[idx], score: scores[idx], issue: issues[idx])
+            // Create swings with realistic durations (0.8 to 1.2 seconds)
+            let swingDuration = [0.9, 1.1, 0.8, 1.2][idx]  // Deterministic for previews
+            let start = Swift.max(0, t - swingDuration/2)
+            let end = Swift.min(duration, t + swingDuration/2)
+            return MockShot(time: t, type: types[idx], score: scores[idx], issue: issues[idx], 
+                          startTime: start, endTime: end)
         }
     }
 }

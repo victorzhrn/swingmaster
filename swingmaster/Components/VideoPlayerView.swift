@@ -13,8 +13,15 @@ struct VideoPlayerView: UIViewControllerRepresentable {
     let url: URL
     @Binding var currentTime: Double
     @Binding var isPlaying: Bool
+    
+    // Segment playback support
+    var segmentStart: Double? = nil
+    var segmentEnd: Double? = nil
+    var onSegmentComplete: (() -> Void)? = nil
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { 
+        Coordinator(segmentEnd: segmentEnd, onSegmentComplete: onSegmentComplete)
+    }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let vc = AVPlayerViewController()
@@ -50,10 +57,15 @@ struct VideoPlayerView: UIViewControllerRepresentable {
             if player.rate != 0 { player.pause() }
         }
 
+        // Update segment boundaries if changed
+        coordinator.segmentEnd = segmentEnd
+        coordinator.onSegmentComplete = onSegmentComplete
+        
         // Seek if external currentTime deviates from player time
         let playerSeconds = coordinator.lastPlayerTimeSeconds
         if abs(currentTime - playerSeconds) > 0.2 {
             coordinator.isSeekingProgrammatically = true
+            coordinator.hasTriggeredSegmentEnd = false  // Reset when seeking
             let target = CMTime(seconds: max(0, currentTime), preferredTimescale: 600)
             player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                 coordinator.isSeekingProgrammatically = false
@@ -63,10 +75,22 @@ struct VideoPlayerView: UIViewControllerRepresentable {
 
     private func attachObserverIfNeeded(player: AVPlayer?, coordinator: Coordinator) {
         guard let player = player, coordinator.timeObserver == nil else { return }
-        let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+        let interval = CMTime(seconds: 0.05, preferredTimescale: 600)  // Higher frequency for segment boundaries
         coordinator.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             let seconds = CMTimeGetSeconds(time)
             coordinator.lastPlayerTimeSeconds = seconds
+            
+            // Check for segment boundary and auto-pause
+            if let segEnd = coordinator.segmentEnd, 
+               seconds >= segEnd - 0.1,  // Small buffer before end
+               player.rate != 0,
+               !coordinator.hasTriggeredSegmentEnd {
+                coordinator.hasTriggeredSegmentEnd = true
+                player.pause()
+                isPlaying = false
+                coordinator.onSegmentComplete?()
+            }
+            
             if !coordinator.isSeekingProgrammatically {
                 if abs(seconds - currentTime) > 0.05 {
                     currentTime = seconds
@@ -81,6 +105,14 @@ struct VideoPlayerView: UIViewControllerRepresentable {
         var timeObserver: Any?
         var lastPlayerTimeSeconds: Double = 0
         var isSeekingProgrammatically: Bool = false
+        var segmentEnd: Double?
+        var onSegmentComplete: (() -> Void)?
+        var hasTriggeredSegmentEnd: Bool = false
+        
+        init(segmentEnd: Double? = nil, onSegmentComplete: (() -> Void)? = nil) {
+            self.segmentEnd = segmentEnd
+            self.onSegmentComplete = onSegmentComplete
+        }
     }
 }
 

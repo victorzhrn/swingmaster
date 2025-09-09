@@ -171,7 +171,20 @@ public final class GeminiValidator {
 
     private func makeAnalysisPrompt(swing: ValidatedSwing, metrics: SegmentMetrics) -> String {
         return """
-        Analyze this validated tennis \(swing.type.rawValue) swing. Metrics: peakAngularVelocity=\(metrics.peakAngularVelocity), peakLinearVelocity=\(metrics.peakLinearVelocity), contactPoint=(\(metrics.contactPoint.x),\(metrics.contactPoint.y)), backswingAngle=\(metrics.backswingAngle), followThroughHeight=\(metrics.followThroughHeight). Return JSON with coaching insights and form_score.
+        Analyze this validated tennis \(swing.type.rawValue) swing.
+        Metrics:
+        - peakAngularVelocity=\(metrics.peakAngularVelocity)
+        - peakLinearVelocity=\(metrics.peakLinearVelocity)
+        - contactPoint=(\(metrics.contactPoint.x),\(metrics.contactPoint.y))
+        - backswingAngle=\(metrics.backswingAngle)
+        - followThroughHeight=\(metrics.followThroughHeight)
+
+        Return ONLY JSON (no prose, no markdown fences) with exactly these fields and types:
+        {
+          "primary_insight": string,   // one concise, actionable sentence (<= 120 chars)
+          "form_score": number         // 0.0 to 10.0 inclusive
+        }
+        The primary_insight should be specific and friendly. The form_score must be a number in [0,10].
         """
     }
 
@@ -198,14 +211,19 @@ public final class GeminiValidator {
         }
     }
 
-    private struct AnalysisResponse: Decodable {
-        let contact_rating: String
-        let contact_adjustment: Float
-        let follow_through_rating: String
-        let rotation_rating: String
-        let form_score: Float
-        let insights: [Insight]
-        struct Insight: Decodable { let type: String; let message: String; let priority: String }
+    private struct AnalysisResponseMinimal: Decodable {
+        let primary_insight: String
+        let form_score: FlexibleFloat
+    }
+
+    private struct AnalysisResponseLegacy: Decodable {
+        struct LegacyInsight: Decodable {
+            let category: String?
+            let feedback: String?
+            let recommendation: String?
+        }
+        let form_score: FlexibleFloat
+        let coaching_insights: [LegacyInsight]?
     }
 
     private func parseValidationResponse(_ text: String) -> (isValid: Bool, swingType: ShotType, startFrame: Int, endFrame: Int, confidence: Float)? {
@@ -219,23 +237,40 @@ public final class GeminiValidator {
     private func parseAnalysisResponse(_ text: String,
                                        swing: ValidatedSwing,
                                        metrics: SegmentMetrics) -> AnalysisResult {
-        // Best-effort parsing; if it fails, fallback to a generic insight
+        // Best-effort parsing with minimal JSON contract, then legacy fallback
         let cleaned = Self.extractJSON(from: text)
         if let data = cleaned.data(using: .utf8) {
-            do {
-                let decoded = try JSONDecoder().decode(AnalysisResponse.self, from: data)
+            let decoder = JSONDecoder()
+            // 1) Minimal schema
+            if let minimal = try? decoder.decode(AnalysisResponseMinimal.self, from: data) {
                 let segment = SwingSegment(startTime: swing.originalTimestamp,
                                            endTime: swing.originalTimestamp,
                                            frames: swing.frames)
-                let primary = decoded.insights.first?.message ?? "Good swing"
-                logger.log("[Gemini] Analysis parsed form_score=\(decoded.form_score, format: .fixed(precision: 2)) insights=\(decoded.insights.count)")
-                // Log first insight if available
-                if let first = decoded.insights.first {
-                    logger.log("[Gemini] First insight: type=\(first.type, privacy: .public) prio=\(first.priority, privacy: .public) msg=\(first.message, privacy: .public)")
-                }
-                return AnalysisResult(segment: segment, primaryInsight: primary, score: decoded.form_score)
+                var score = minimal.form_score.value
+                // Normalize score: if model returned 0-100, scale down; then clamp to [0,10]
+                if score > 10.0 { score = score / 10.0 }
+                score = min(max(score, 0.0), 10.0)
+                logger.log("[Gemini] Analysis minimal parsed score=\(score, format: .fixed(precision: 2)))")
+                return AnalysisResult(segment: segment, primaryInsight: minimal.primary_insight, score: score)
+            }
+            // 2) Legacy schema fallback
+            if let legacy = try? decoder.decode(AnalysisResponseLegacy.self, from: data) {
+                let segment = SwingSegment(startTime: swing.originalTimestamp,
+                                           endTime: swing.originalTimestamp,
+                                           frames: swing.frames)
+                let insight = legacy.coaching_insights?.first
+                let primary = insight?.feedback ?? insight?.recommendation ?? insight?.category ?? "Good swing"
+                var score = legacy.form_score.value
+                if score > 10.0 { score = score / 10.0 }
+                score = min(max(score, 0.0), 10.0)
+                logger.log("[Gemini] Analysis legacy parsed score=\(score, format: .fixed(precision: 2))) insights=\(legacy.coaching_insights?.count ?? 0)")
+                return AnalysisResult(segment: segment, primaryInsight: primary, score: score)
+            }
+            // 3) Log decode error for visibility
+            do {
+                _ = try decoder.decode(AnalysisResponseMinimal.self, from: data) // attempt to surface a better error
             } catch {
-                logger.error("[Gemini] Analysis JSON decode error: \(String(describing: error), privacy: .public)")
+                logger.error("[Gemini] Analysis JSON decode error (minimal): \(String(describing: error), privacy: .public)")
             }
         }
         logger.warning("[Gemini] Analysis parse failed; returning fallback insight")

@@ -32,7 +32,11 @@ enum MockSwingDetector {
                     "Great extension; maintain wrist stability"
                 ]
                 let issue = issues[idx % issues.count]
-                shots.append(MockShot(time: center, type: type, score: score, issue: issue))
+                // Each swing has 1 second duration centered at the detection point
+                let startTime = Swift.max(0, center - 0.5)
+                let endTime = Swift.min(duration, center + 0.5)
+                shots.append(MockShot(time: center, type: type, score: score, issue: issue,
+                                    startTime: startTime, endTime: endTime))
                 idx += 1
             }
             center += 3.0
