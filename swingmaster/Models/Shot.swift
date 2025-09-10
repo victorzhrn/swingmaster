@@ -56,8 +56,11 @@ struct MockShot: Identifiable, Hashable, Codable {
     let type: ShotType
     let score: Float
     let issue: String
+    // Coaching details (optional for now; filled from AnalysisResult)
+    let strengths: [String]?
+    let improvements: [String]?
 
-    init(id: UUID = UUID(), time: Double, type: ShotType, score: Float, issue: String, startTime: Double? = nil, endTime: Double? = nil) {
+    init(id: UUID = UUID(), time: Double, type: ShotType, score: Float, issue: String, startTime: Double? = nil, endTime: Double? = nil, strengths: [String]? = nil, improvements: [String]? = nil) {
         self.id = id
         self.time = time
         // Default to 1 second swing duration if not specified
@@ -66,6 +69,8 @@ struct MockShot: Identifiable, Hashable, Codable {
         self.type = type
         self.score = score
         self.issue = issue
+        self.strengths = strengths
+        self.improvements = improvements
     }
     
     /// Duration of the swing in seconds

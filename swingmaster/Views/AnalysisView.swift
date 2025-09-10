@@ -21,6 +21,7 @@ struct AnalysisView: View {
     @State private var showPlaybackControls: Bool = false
 
     var body: some View {
+        ScrollView {
         VStack(spacing: 12) {
             // Real video when available, otherwise placeholder
             Group {
@@ -96,13 +97,14 @@ struct AnalysisView: View {
             ShotChipsRow(shots: shots, selectedShotID: $selectedShotID, onPrev: selectPrev, onNext: selectNext)
 
             // Insight Card
-            insightCard
+            enhancedInsightCard
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
 
             Spacer(minLength: 0)
         }
         .padding(.top, 8)
+        }
         .background(Color.black.ignoresSafeArea())
         .onAppear {
             if selectedShotID == nil, let first = shots.first { selectedShotID = first.id; currentTime = first.time }
@@ -165,38 +167,77 @@ struct AnalysisView: View {
         .background(.ultraThinMaterial)
     }
 
-    private var insightCard: some View {
+    private var enhancedInsightCard: some View {
         let selected = shots.first(where: { $0.id == selectedShotID })
-        return VStack(alignment: .leading, spacing: 8) {
+        
+        return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(selected?.type.accessibleName ?? "Shot")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(.system(size: 17, weight: .bold))
                 Spacer()
-                Text("Score: " + String(format: "%.1f", selected?.score ?? 0))
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.9))
+                Text(String(format: "%.1f", selected?.score ?? 0))
+                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    .foregroundColor(scoreColor(selected?.score ?? 0))
             }
-
-            Text(selected?.issue ?? "")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // Placeholder for overlay description
-            Text("Visual overlay highlights contact and ideal point")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.75))
+            .padding(.bottom, 4)
+            
+            // Strengths
+            if let strengths = selected?.strengths, !strengths.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("What you did well", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.green)
+                    ForEach(strengths, id: \.self) { s in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 4, height: 4)
+                                .offset(y: 6)
+                            Text(s)
+                                .font(.system(size: 15))
+                                .foregroundColor(.white)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+            
+            Divider().background(Color.white.opacity(0.1))
+            
+            // Improvements
+            if let improvements = selected?.improvements, !improvements.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Focus on improving", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.yellow)
+                    ForEach(Array(improvements.enumerated()), id: \.offset) { index, text in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(index == 0 ? Color.yellow : Color.yellow.opacity(0.6))
+                                .frame(width: 4, height: 4)
+                                .offset(y: 6)
+                            Text(text)
+                                .font(.system(size: 15, weight: index == 0 ? .medium : .regular))
+                                .foregroundColor(.white.opacity(index == 0 ? 1 : 0.9))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
         }
-        .padding(16)
+        .padding(18)
         .background(.ultraThinMaterial)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.white.opacity(0.15), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Insight. \(selected?.type.accessibleName ?? "Shot"). Score \(String(format: "%.1f", selected?.score ?? 0)). \(selected?.issue ?? "")")
+    }
+
+    private func scoreColor(_ score: Float) -> Color {
+        if score >= 7.5 { return .green }
+        if score >= 5.5 { return .yellow }
+        return .orange
     }
 
     // MARK: - Actions

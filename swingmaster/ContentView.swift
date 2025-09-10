@@ -68,10 +68,19 @@ struct ContentView: View {
                         analysisVideoURL = url
                         analysisDuration = max(1, VideoStorage.getDurationSeconds(for: url))
                         analysisShots = results.enumerated().map { idx, res in
-                            let t = res.segment.startTime
-                            let st: ShotType = .forehand // Placeholder until AnalysisView supports real results
+                            let t = (res.segment.startTime + res.segment.endTime) / 2.0
                             let score = max(0, min(10, res.score))
-                            return MockShot(time: t, type: st, score: score, issue: res.primaryInsight)
+                            return MockShot(
+                                id: res.id,
+                                time: t,
+                                type: res.swingType,
+                                score: score,
+                                issue: res.improvements.first ?? "",
+                                startTime: res.segment.startTime,
+                                endTime: res.segment.endTime,
+                                strengths: res.strengths,
+                                improvements: res.improvements
+                            )
                         }
                         // Persist analysis for future visits
                         AnalysisStore.save(videoURL: url, duration: analysisDuration, shots: analysisShots)

@@ -77,7 +77,7 @@ public final class VideoProcessor: ObservableObject {
                 let segmentMetrics = metricsCalculator.calculateSegmentMetrics(for: swing.frames)
                 if let analysis = try? await geminiValidator.analyzeSwing(swing, metrics: segmentMetrics) {
                     results.append(analysis)
-                    logger.log("[File] Analysis #\(idx + 1) score=\(analysis.score, format: .fixed(precision: 2)) insightLen=\(analysis.primaryInsight.count)")
+                    logger.log("[File] Analysis #\(idx + 1) score=\(analysis.score, format: .fixed(precision: 2)) strengths=\(analysis.strengths.count) improvements=\(analysis.improvements.count)")
                 } else {
                     logger.warning("[File] Analysis failed for validated swing #\(idx + 1)")
                 }
@@ -118,7 +118,7 @@ public final class VideoProcessor: ObservableObject {
             let segmentMetrics = metricsCalculator.calculateSegmentMetrics(for: swing.frames)
             if let analysis = try? await geminiValidator.analyzeSwing(swing, metrics: segmentMetrics) {
                 results.append(analysis)
-                logger.log("[Live] Analysis #\(idx + 1) score=\(analysis.score, format: .fixed(precision: 2)) insightLen=\(analysis.primaryInsight.count)")
+                logger.log("[Live] Analysis #\(idx + 1) score=\(analysis.score, format: .fixed(precision: 2)) strengths=\(analysis.strengths.count) improvements=\(analysis.improvements.count)")
             } else {
                 logger.warning("[Live] Analysis failed for validated swing #\(idx + 1)")
             }
