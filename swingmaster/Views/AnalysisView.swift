@@ -213,7 +213,7 @@ struct AnalysisView: View {
                     ForEach(Array(improvements.enumerated()), id: \.offset) { index, text in
                         HStack(alignment: .top, spacing: 8) {
                             Circle()
-                                .fill(index == 0 ? Color.yellow : Color.yellow.opacity(0.6))
+                                .fill(index == 0 ? TennisColors.tennisYellow : TennisColors.tennisYellow.opacity(0.6))
                                 .frame(width: 4, height: 4)
                                 .offset(y: 6)
                             Text(text)

@@ -31,76 +31,72 @@ struct VideoSessionCard: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Video thumbnail
-            ZStack {
-                if let image = thumbnailImage {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(height: 200)
-                        .clipped()
-                        .overlay(
-                            LinearGradient(
-                                colors: [Color.black.opacity(0), Color.black.opacity(0.3)],
-                                startPoint: .top,
-                                endPoint: .bottom
+        GlassContainer(style: .medium, cornerRadius: 16) {
+            VStack(spacing: 0) {
+                // Video thumbnail
+                ZStack {
+                    if let image = thumbnailImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 200)
+                            .clipped()
+                            .overlay(
+                                LinearGradient(
+                                    colors: [Color.black.opacity(0), Color.black.opacity(0.3)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
                             )
-                        )
-                } else {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 200)
-                        .overlay(
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
-                        )
+                    } else {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(height: 200)
+                            .overlay(
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                            )
+                    }
+                    
+                    // Play button overlay (smaller and subtler)
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.6))
+                        .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
                 }
                 
-                // Play button overlay (smaller and subtler)
-                Image(systemName: "play.circle.fill")
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
-                    .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
-            }
-            // Dotted shot navigation removed per request
-            
-            // Info bar
-            HStack {
-                Text(dateFormatter.string(from: session.date))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-                
-                if !shots.isEmpty {
-                    HStack(spacing: 12) {
-                        // Average score
-                        HStack(spacing: 4) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.yellow)
-                            Text(String(format: "%.1f", averageScore))
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                // Info bar
+                HStack {
+                    Text(dateFormatter.string(from: session.date))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    if !shots.isEmpty {
+                        HStack(spacing: 12) {
+                            // Average score
+                            HStack(spacing: 4) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(TennisColors.tennisYellow)
+                                Text(String(format: "%.1f", averageScore))
+                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                    .tennisMetricStyle()
+                            }
+                            
+                            // Shot count
+                            Text("\(shots.count) shots")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.secondary)
                         }
-                        
-                        // Shot count
-                        Text("\(shots.count) shots")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
                     }
                 }
+                .padding(.horizontal, Spacing.cardPadding)
+                .padding(.vertical, Spacing.small)
+                .background(Color.clear)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color(UIColor.secondarySystemBackground))
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
         .onAppear {
             loadAnalysisData()
             updateThumbnail(for: shots.first?.time ?? 1.0)

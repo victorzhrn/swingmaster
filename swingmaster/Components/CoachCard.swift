@@ -12,68 +12,50 @@ struct CoachCard: View {
     let insight: String
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header with AI Coach label
-            HStack {
-                Image(systemName: "sparkle")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.blue)
+        GlassContainer(style: .medium, cornerRadius: 16) {
+            VStack(alignment: .leading, spacing: Spacing.small) {
+                // Header with AI Coach label
+                HStack {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(TennisColors.tennisGreen)
+                    
+                    Text("AI Coach Insight")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(TennisColors.tennisGreen)
+                    
+                    Spacer()
+                    
+                    // Rating badge
+                    Text(rating)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, Spacing.small)
+                        .padding(.vertical, Spacing.micro)
+                        .background(
+                            Capsule()
+                                .fill(TennisColors.tennisGreen)
+                        )
+                }
                 
-                Text("AI Coach Insight")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.blue)
+                // Insight text
+                Text(insight)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.primary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
                 
-                Spacer()
-                
-                // Rating badge
-                Text(rating)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(LinearGradient(
-                                colors: [Color.blue, Color.blue.opacity(0.8)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ))
-                    )
-            }
-            
-            // Insight text
-            Text(insight)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.primary)
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
-            
-            // Visual indicator (simplified progress bar)
-            HStack(spacing: 4) {
-                ForEach(0..<5) { index in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(index < 3 ? Color.green : Color.gray.opacity(0.3))
-                        .frame(height: 4)
+                // Visual indicator (simplified progress bar)
+                HStack(spacing: 4) {
+                    ForEach(0..<5) { index in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(index < 3 ? TennisColors.tennisGreen : Color.gray.opacity(0.3))
+                            .frame(height: 4)
+                    }
                 }
             }
-            .padding(.top, 4)
+            .padding(Spacing.cardPadding)
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(UIColor.secondarySystemBackground))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(
-                            LinearGradient(
-                                colors: [Color.blue.opacity(0.3), Color.blue.opacity(0.1)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-        )
     }
 }
 

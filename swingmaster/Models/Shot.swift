@@ -39,9 +39,9 @@ public enum ShotType: String, Codable, CaseIterable, Sendable {
     /// Color mapping aligned with design principles.
     var accentColor: Color {
         switch self {
-        case .forehand: return Color.blue
-        case .backhand: return Color.green
-        case .serve: return Color.purple
+        case .forehand: return TennisColors.tennisGreen
+        case .backhand: return TennisColors.courtGreen
+        case .serve: return TennisColors.clayOrange
         case .unknown: return Color.gray
         }
     }

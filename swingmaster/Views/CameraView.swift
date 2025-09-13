@@ -190,7 +190,7 @@ struct CameraView: View {
                         .foregroundColor(.black)
                         .frame(height: 44)
                         .padding(.horizontal, 16)
-                        .background(Color.yellow)
+                        .background(TennisColors.tennisYellow)
                         .cornerRadius(8)
 
                         Button("Retry") {
@@ -199,7 +199,7 @@ struct CameraView: View {
                         .foregroundColor(.black)
                         .frame(height: 44)
                         .padding(.horizontal, 16)
-                        .background(Color.green)
+                        .background(TennisColors.tennisGreen)
                         .cornerRadius(8)
                     }
                 }

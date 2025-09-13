@@ -13,63 +13,58 @@ struct RecordOptionsModal: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Handle bar
-            Capsule()
-                .fill(Color.gray.opacity(0.4))
-                .frame(width: 40, height: 5)
-                .padding(.top, 12)
-                .padding(.bottom, 20)
-            
-            // Title
-            Text("Capture Your Swing")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .padding(.bottom, 24)
-            
-            // Options
-            VStack(spacing: 16) {
-                // Record option
-                OptionButton(
-                    icon: "camera.fill",
-                    title: "Record Now",
-                    subtitle: "Use camera to capture your swing",
-                    color: .red,
-                    action: onRecord
-                )
+        GlassContainer(style: .heavy, cornerRadius: 20) {
+            VStack(spacing: 0) {
+                // Handle bar
+                Capsule()
+                    .fill(Color.gray.opacity(0.4))
+                    .frame(width: 40, height: 5)
+                    .padding(.top, Spacing.small)
+                    .padding(.bottom, Spacing.medium)
                 
-                // Upload option
-                OptionButton(
-                    icon: "square.and.arrow.up.fill",
-                    title: "Upload Video",
-                    subtitle: "Choose from your photo library",
-                    color: .blue,
-                    action: onUpload
-                )
+                // Title
+                Text("Capture Your Swing")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .padding(.bottom, Spacing.large)
+                
+                // Options
+                VStack(spacing: Spacing.medium) {
+                    // Record option
+                    OptionButton(
+                        icon: "camera.fill",
+                        title: "Record Now",
+                        subtitle: "Use camera to capture your swing",
+                        color: TennisColors.clayOrange,
+                        action: onRecord
+                    )
+                    
+                    // Upload option
+                    OptionButton(
+                        icon: "square.and.arrow.up.fill",
+                        title: "Upload Video",
+                        subtitle: "Choose from your photo library",
+                        color: TennisColors.tennisGreen,
+                        action: onUpload
+                    )
+                }
+                .padding(.horizontal, Spacing.medium)
+                
+                // Cancel button
+                Button(action: { dismiss() }) {
+                    Text("Cancel")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                }
+                .padding(.top, Spacing.medium)
+                .padding(.horizontal, Spacing.medium)
+                
+                Spacer()
             }
-            .padding(.horizontal, 20)
-            
-            // Cancel button
-            Button(action: { dismiss() }) {
-                Text("Cancel")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-            }
-            .padding(.top, 20)
-            .padding(.horizontal, 20)
-            
-            Spacer()
+            .padding(.bottom, Spacing.medium)
         }
         .frame(maxHeight: 340)
-        .background(Color(UIColor.systemBackground))
-        .clipShape(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
-        )
     }
 }
 
@@ -116,7 +111,7 @@ struct OptionButton: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.secondary)
             }
-            .padding(12)
+            .padding(Spacing.small)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color(UIColor.secondarySystemBackground))

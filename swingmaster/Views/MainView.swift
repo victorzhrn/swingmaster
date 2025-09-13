@@ -6,10 +6,13 @@
 //
 
 import SwiftUI
+// Design System
+import Foundation
 
 struct MainView: View {
     @EnvironmentObject var sessionStore: SessionStore
     let onSelectSession: (Session) -> Void
+    @State private var showRecordOptions = false
     
     // Mock data for coach insights
     private let coachInsight = "Your forehand contact point has improved 15% this week. Focus on maintaining shoulder rotation through impact."
@@ -21,43 +24,43 @@ struct MainView: View {
             ZStack {
                 // Main content
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
+                    VStack(spacing: Spacing.large) {
                         // Profile header
                         ProfileHeader(name: userName, rating: userRating)
-                            .padding(.horizontal)
-                            .padding(.top, 12)
+                            .padding(.horizontal, Spacing.screenMargin)
+                            .padding(.top, Spacing.medium)
                         
                         // Coach card
                         CoachCard(rating: userRating, insight: coachInsight)
-                            .padding(.horizontal)
+                            .padding(.horizontal, Spacing.screenMargin)
                         
                         // Sessions section
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: Spacing.medium) {
                             if !sessionStore.sessions.isEmpty {
                                 Text("Recent Sessions")
-                                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 20, weight: .semibold))
                                     .foregroundColor(.primary)
-                                    .padding(.horizontal)
+                                    .padding(.horizontal, Spacing.screenMargin)
                             }
                             
                             if sessionStore.sessions.isEmpty {
                                 EmptyStateView()
-                                    .padding(.top, 60)
+                                    .padding(.top, Spacing.xxlarge)
                             } else {
-                                VStack(spacing: 16) {
+                                VStack(spacing: Spacing.medium) {
                                     ForEach(sessionStore.sessions.prefix(10)) { session in
                                         VideoSessionCard(session: session)
                                             .onTapGesture { onSelectSession(session) }
                                     }
                                 }
-                                .padding(.horizontal)
+                                .padding(.horizontal, Spacing.screenMargin)
                             }
                         }
                         
                         // Bottom padding for floating button
                         Color.clear.frame(height: 100)
                     }
-                    .padding(.vertical)
+                    .padding(.vertical, Spacing.medium)
                 }
                 .background(
                     LinearGradient(
@@ -70,6 +73,10 @@ struct MainView: View {
                     )
                     .ignoresSafeArea()
                 )
+                .overlay(alignment: .bottomTrailing) {
+                    FloatingActionButton(isPressed: $showRecordOptions)
+                        .padding(Spacing.large)
+                }
             }
             .navigationBarHidden(true)
         }
@@ -92,61 +99,42 @@ struct ProfileHeader: View {
                     .foregroundColor(.secondary)
                 
                 Text(name)
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundColor(.primary)
                 
                 HStack(spacing: 8) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
                         .font(.system(size: 14))
-                        .foregroundColor(.green)
+                        .foregroundColor(TennisColors.tennisGreen)
                     
                     Text(rating)
                         .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.green)
+                        .foregroundColor(TennisColors.tennisGreen)
                 }
                 .padding(.top, 2)
             }
             Spacer()
             
-            // Profile avatar placeholder
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.blue.opacity(0.6), Color.purple.opacity(0.6)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 56, height: 56)
-                .overlay(
-                    Text(name.prefix(1))
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                )
+            // Profile avatar (solid color)
+            TennisAvatar(initial: String(name.prefix(1)), size: 56)
         }
     }
 }
 
 struct EmptyStateView: View {
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: Spacing.large) {
             ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.blue.opacity(0.1), Color.purple.opacity(0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 100, height: 100)
+                GlassContainer(style: .subtle, cornerRadius: 50) {
+                    Color.clear.frame(width: 100, height: 100)
+                }
                 
                 Image(systemName: "figure.tennis")
                     .font(.system(size: 48))
-                    .foregroundColor(.blue)
+                    .foregroundColor(TennisColors.tennisGreen)
             }
             
-            VStack(spacing: 8) {
+            VStack(spacing: Spacing.small) {
                 Text("Start Your Journey")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
@@ -156,24 +144,24 @@ struct EmptyStateView: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
-                    .padding(.horizontal, 40)
+                    .padding(.horizontal, Spacing.xlarge + Spacing.small)
             }
             
             // Arrow pointing to floating button
-            VStack(spacing: 8) {
+            VStack(spacing: Spacing.small) {
                 Image(systemName: "arrow.down")
                     .font(.system(size: 20))
-                    .foregroundColor(.blue)
+                    .foregroundColor(TennisColors.tennisGreen)
                     .opacity(0.6)
                 
                 Text("Tap to begin")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.blue)
+                    .foregroundColor(TennisColors.tennisGreen)
                     .opacity(0.6)
             }
-            .padding(.top, 20)
+            .padding(.top, Spacing.large)
         }
-        .padding(.vertical, 40)
+        .padding(.vertical, Spacing.xlarge + Spacing.small)
     }
 }
 

@@ -27,8 +27,8 @@ struct ProcessingView: View {
             Button("Cancel") { onCancel() }
                 .foregroundColor(.black)
                 .frame(height: 44)
-                .padding(.horizontal, 16)
-                .background(Color.yellow)
+                .padding(.horizontal, Spacing.medium)
+                .background(TennisColors.tennisYellow)
                 .cornerRadius(8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
