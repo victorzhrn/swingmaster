@@ -25,7 +25,6 @@ struct CameraView: View {
     @State private var showSkeleton: Bool = true
 
     let onRecorded: (URL) -> Void
-    let onShowHistory: () -> Void
 
     /// Returns true when rendering inside Xcode Previews so that we can bypass
     /// hardware permissions/session setup and still display the intended UI.
@@ -57,18 +56,8 @@ struct CameraView: View {
 
                     // Bottom bar
                     ZStack {
-                        // Left slot (Upload) — hidden during active session
-                        HStack {
-                            if !(camera.isRecording || camera.isPaused) {
-                                Button(action: { requestPhotosAndPresentPicker() }) {
-                                    Image(systemName: "folder")
-                                        .font(.system(size: 24, weight: .regular))
-                                        .foregroundColor(.white)
-                                        .padding(16)
-                                }
-                            }
-                            Spacer()
-                        }
+                        // Left slot (empty)
+                        HStack { Spacer() }
 
                         // Center control (Start/Pause/Resume) — always centered
                         HStack {
@@ -117,17 +106,10 @@ struct CameraView: View {
                             Spacer()
                         }
 
-                        // Right slot (History or END)
+                        // Right slot (END only)
                         HStack {
                             Spacer()
-                            if !(camera.isRecording || camera.isPaused) {
-                                Button(action: { onShowHistory() }) {
-                                    Image(systemName: "chart.bar.xaxis")
-                                        .font(.system(size: 24, weight: .regular))
-                                        .foregroundColor(.white)
-                                        .padding(16)
-                                }
-                            } else {
+                            if (camera.isRecording || camera.isPaused) {
                                 Button(action: {
                                     let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                                     impactFeedback.impactOccurred()
@@ -280,17 +262,7 @@ struct CameraView: View {
                 .accessibilityLabel(showSkeleton ? "Hide skeleton overlay" : "Show skeleton overlay")
             }
         }
-        .sheet(isPresented: $showingPicker) {
-            VideoPicker { pickedTempURL in
-                // Show processing for 3 seconds, then delegate to onRecorded
-                isProcessing = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                    onRecorded(pickedTempURL)
-                    isProcessing = false
-                }
-            }
-            .ignoresSafeArea()
-        }
+        // Upload removed in MVP MainView flow
     }
 
     private func requestPermissionsAndSetup() {
@@ -330,11 +302,7 @@ struct CameraView: View {
         recordedSegments.removeAll()
     }
 
-    // MARK: - Photos Picker
-
-    private func requestPhotosAndPresentPicker() {
-        showingPicker = true
-    }
+    // Upload flow removed
 }
 
 // MARK: - RecordingButtonStyle (inline style matching reference)
