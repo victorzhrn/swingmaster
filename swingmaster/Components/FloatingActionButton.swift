@@ -22,25 +22,36 @@ struct FloatingActionButton: View {
             let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
             impactFeedback.impactOccurred()
         }) {
-            ZStack {
-                // Background circle (solid tennis yellow)
-                Circle()
-                    .fill(TennisColors.tennisYellow)
-                    .frame(width: 64, height: 64)
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                    )
-
-                // Plus icon
+            HStack(spacing: 8) {
                 Image(systemName: "plus")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundColor(TennisColors.courtGreen)
-                    .rotationEffect(.degrees(isPressed ? 135 : 0))
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("Session")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
             }
+            .padding(.horizontal, 18)
+            .frame(height: 52)
+            .background(
+                Capsule()
+                    .fill(TennisColors.tennisGreen)
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
         }
-        .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 6)
-        .scaleEffect(isPressed ? 0.92 : 1.0)
+        .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 5)
+        .buttonStyle(PressableStyle())
+    }
+}
+
+/// ButtonStyle that provides tactile press feedback via a transient scale animation.
+struct PressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: configuration.isPressed)
     }
 }
 

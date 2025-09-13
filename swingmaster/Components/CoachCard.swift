@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct CoachCard: View {
-    let rating: String
+    let category: String
     let insight: String
     
     var body: some View {
@@ -26,8 +26,8 @@ struct CoachCard: View {
                     
                     Spacer()
                     
-                    // Rating badge
-                    Text(rating)
+                    // Category badge
+                    Text(category)
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                         .padding(.horizontal, Spacing.small)
@@ -61,7 +61,7 @@ struct CoachCard: View {
 
 #Preview {
     CoachCard(
-        rating: "USTR 3.5 → 4.0",
+        category: "Forhand",
         insight: "Your forehand contact point has improved 15% this week. Focus on maintaining shoulder rotation through impact."
     )
     .padding()

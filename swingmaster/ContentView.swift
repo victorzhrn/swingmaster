@@ -1,4 +1,4 @@
-//
+ //
 //  ContentView.swift
 //  swingmaster
 //
@@ -39,8 +39,14 @@ struct ContentView: View {
                     }
                 })
                     .environmentObject(sessionStore)
-                    .overlay(alignment: .bottomTrailing) {
-                        FloatingActionMenu()
+                    .safeAreaInset(edge: .bottom) {
+                        HStack {
+                            Spacer()
+                            FloatingActionMenu()
+                            Spacer()
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 16)
                     }
                     .transition(.opacity)
                 
@@ -149,8 +155,6 @@ struct ContentView: View {
                     showingFilePicker = true
                 }
             )
-            .padding(.trailing, 24)
-            .padding(.bottom, 32)
         }
     }
 }

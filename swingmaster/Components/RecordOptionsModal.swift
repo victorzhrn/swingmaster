@@ -15,16 +15,10 @@ struct RecordOptionsModal: View {
     var body: some View {
         GlassContainer(style: .heavy, cornerRadius: 20) {
             VStack(spacing: 0) {
-                // Handle bar
-                Capsule()
-                    .fill(Color.gray.opacity(0.4))
-                    .frame(width: 40, height: 5)
-                    .padding(.top, Spacing.small)
-                    .padding(.bottom, Spacing.medium)
-                
                 // Title
                 Text("Capture Your Swing")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .padding(.top, Spacing.large)
                     .padding(.bottom, Spacing.large)
                 
                 // Options

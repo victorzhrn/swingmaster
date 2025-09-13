@@ -11,13 +11,13 @@ import Foundation
 
 struct MainView: View {
     @EnvironmentObject var sessionStore: SessionStore
-    let onSelectSession: (Session) -> Void
-    @State private var showRecordOptions = false
-    
+    let onSelectSession: (Session) -> Void    
     // Mock data for coach insights
     private let coachInsight = "Your forehand contact point has improved 15% this week. Focus on maintaining shoulder rotation through impact."
+    private let coachCategory = "Forhand"
     private let userRating = "USTR 3.5 → 4.0"
     private let userName = "Victor"
+
     
     var body: some View {
         NavigationView {
@@ -31,7 +31,7 @@ struct MainView: View {
                             .padding(.top, Spacing.medium)
                         
                         // Coach card
-                        CoachCard(rating: userRating, insight: coachInsight)
+                        CoachCard(category: coachCategory, insight: coachInsight)
                             .padding(.horizontal, Spacing.screenMargin)
                         
                         // Sessions section
@@ -57,8 +57,8 @@ struct MainView: View {
                             }
                         }
                         
-                        // Bottom padding for floating button
-                        Color.clear.frame(height: 100)
+                        // Spacer at bottom of content
+                        Color.clear.frame(height: 24)
                     }
                     .padding(.vertical, Spacing.medium)
                 }
@@ -73,10 +73,6 @@ struct MainView: View {
                     )
                     .ignoresSafeArea()
                 )
-                .overlay(alignment: .bottomTrailing) {
-                    FloatingActionButton(isPressed: $showRecordOptions)
-                        .padding(Spacing.large)
-                }
             }
             .navigationBarHidden(true)
         }
@@ -115,8 +111,8 @@ struct ProfileHeader: View {
             }
             Spacer()
             
-            // Profile avatar (solid color)
-            TennisAvatar(initial: String(name.prefix(1)), size: 56)
+            // Profile avatar (ring)
+            TennisAvatar(initial: String(name.prefix(1)), size: 48)
         }
     }
 }
