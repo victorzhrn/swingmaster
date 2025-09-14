@@ -67,6 +67,33 @@ extension Color {
             }
         })
     }
+
+    /// Semantic color for excellent shot quality.
+    static var shotExcellent: Color {
+        Color(UIColor { traits in
+            // Use aceGreen in both modes to maintain consistency
+            return UIColor(hex: "#5CB85C") ?? .systemGreen
+        })
+    }
+
+    /// Semantic color for good/acceptable shot quality.
+    static var shotGood: Color {
+        Color(UIColor { traits in
+            // courtGreen token
+            return UIColor(hex: "#3B7F3C") ?? .systemGreen
+        })
+    }
+
+    /// Semantic color for shots needing work. Yellow in dark, clay orange in light.
+    static var shotNeedsWork: Color {
+        Color(UIColor { traits in
+            if traits.userInterfaceStyle == .dark {
+                return UIColor(hex: "#F7DC6F") ?? .systemYellow
+            } else {
+                return UIColor(hex: "#E67E22") ?? .systemOrange
+            }
+        })
+    }
 }
 
 // MARK: - Hex Helpers

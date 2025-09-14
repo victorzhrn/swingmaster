@@ -38,28 +38,39 @@ struct AnalysisView: View {
                         }
                     )
                     .frame(height: 320)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.glassBackground)
                     )
-                    .overlay(alignment: .bottomLeading) {
-                        persistentVideoControls
-                            .padding(.leading, 12)
-                            .padding(.bottom, 12)
-                    }
-                    .overlay(alignment: .bottom) {
-                        shotNavigator
-                            .padding(.bottom, 8)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                    )
+                    .shadow(color: colorScheme == .light ? .black.opacity(0.1) : .clear, radius: 10, y: 5)
+                    .overlay(alignment: .top) {
+                        if let segment = playingSegment {
+                            HStack(spacing: 8) {
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(segment.type.accessibleName)
+                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color.black.opacity(0.35)))
+                            .foregroundColor(.white)
+                            .padding(.top, 8)
+                        }
                     }
                     .accessibilityLabel("Video player")
                 } else {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 16)
                             .fill(Color(UIColor.secondarySystemBackground))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
                             )
                         VStack(spacing: 8) {
                             Image(systemName: "play.rectangle.fill")
@@ -70,6 +81,7 @@ struct AnalysisView: View {
                                 .foregroundColor(.white.opacity(0.9))
                         }
                     }
+                    .shadow(color: colorScheme == .light ? .black.opacity(0.1) : .clear, radius: 10, y: 5)
                     .frame(height: 320)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Video player")
@@ -86,11 +98,13 @@ struct AnalysisView: View {
                 isPlaying: $isPlaying,
                 onPlaySegment: { shot in
                     playSegment(shot)
-                }
+                },
+                onPrev: selectPrev,
+                onNext: selectNext
             )
             .padding(.horizontal, 16)
 
-            // Removed ShotChipsRow in favor of minimal navigator overlay on video
+            // Navigation integrated into the timeline; no video overlays
 
             // Insight Card
             enhancedInsightCard
@@ -202,77 +216,70 @@ struct AnalysisView: View {
     private var enhancedInsightCard: some View {
         let selected = shots.first(where: { $0.id == selectedShotID })
         
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(selected?.type.accessibleName ?? "Shot")
-                    .font(.system(size: 17, weight: .bold))
-                Spacer()
-                Text(String(format: "%.1f", selected?.score ?? 0))
-                    .modifier(TennisTypography.MetricStyle())
-                    .foregroundColor(scoreColor(selected?.score ?? 0))
-            }
-            .padding(.bottom, 4)
-            
-            // Strengths
-            if let strengths = selected?.strengths, !strengths.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("What you did well", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(TennisColors.aceGreen)
-                    ForEach(strengths, id: \.self) { s in
-                        HStack(alignment: .top, spacing: 8) {
-                            Circle()
-                                .fill(TennisColors.aceGreen)
-                                .frame(width: 4, height: 4)
-                                .offset(y: 6)
-                            Text(s)
-                                .font(.system(size: 15))
-                                .foregroundColor(Color.primary)
-                                .fixedSize(horizontal: false, vertical: true)
+        return GlassContainer(style: .medium, cornerRadius: 16) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(selected?.type.accessibleName ?? "Shot")
+                        .font(.system(size: 17, weight: .semibold))
+                    Spacer()
+                    Text(String(format: "%.1f", selected?.score ?? 0))
+                        .modifier(TennisTypography.MetricStyle())
+                        .foregroundColor(scoreColor(selected?.score ?? 0))
+                }
+                .padding(.bottom, 4)
+                
+                // Strengths
+                if let strengths = selected?.strengths, !strengths.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("What you did well", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(TennisColors.aceGreen)
+                        ForEach(strengths, id: \.self) { s in
+                            HStack(alignment: .top, spacing: 8) {
+                                Circle()
+                                    .fill(TennisColors.aceGreen)
+                                    .frame(width: 4, height: 4)
+                                    .offset(y: 6)
+                                Text(s)
+                                    .font(.system(size: 15, weight: .regular))
+                                    .foregroundColor(Color.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                
+                Divider().background((colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)))
+                
+                // Improvements
+                if let improvements = selected?.improvements, !improvements.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Focus on improving", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(colorScheme == .dark ? TennisColors.tennisYellow : TennisColors.clayOrange)
+                        ForEach(Array(improvements.enumerated()), id: \.offset) { index, text in
+                            HStack(alignment: .top, spacing: 8) {
+                                Circle()
+                                    .fill(index == 0 ? (colorScheme == .dark ? TennisColors.tennisYellow : TennisColors.clayOrange) : (colorScheme == .dark ? TennisColors.tennisYellow.opacity(0.6) : TennisColors.clayOrange.opacity(0.6)))
+                                    .frame(width: 4, height: 4)
+                                    .offset(y: 6)
+                                Text(text)
+                                    .font(.system(size: 15, weight: index == 0 ? .medium : .regular))
+                                    .foregroundColor(Color.primary.opacity(index == 0 ? 1 : 0.95))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
                 }
             }
-            
-            Divider().background((colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)))
-            
-            // Improvements
-            if let improvements = selected?.improvements, !improvements.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Focus on improving", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(TennisColors.tennisYellow)
-                    ForEach(Array(improvements.enumerated()), id: \.offset) { index, text in
-                        HStack(alignment: .top, spacing: 8) {
-                            Circle()
-                                .fill(index == 0 ? TennisColors.tennisYellow : TennisColors.tennisYellow.opacity(0.6))
-                                .frame(width: 4, height: 4)
-                                .offset(y: 6)
-                            Text(text)
-                                .font(.system(size: 15, weight: index == 0 ? .medium : .regular))
-                                .foregroundColor(Color.primary.opacity(index == 0 ? 1 : 0.95))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-            }
+            .padding(16)
         }
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(UIColor.secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func scoreColor(_ score: Float) -> Color {
-        if score >= 7.5 { return TennisColors.aceGreen }
-        if score >= 5.5 { return TennisColors.tennisYellow }
-        return TennisColors.clayOrange
+        if score >= 7.5 { return .shotExcellent }
+        if score >= 5.5 { return .shotGood }
+        return .shotNeedsWork
     }
 
     // MARK: - Actions

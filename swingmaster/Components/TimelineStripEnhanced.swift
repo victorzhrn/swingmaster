@@ -19,32 +19,58 @@ struct TimelineStripEnhanced: View {
     /// Callback when user wants to play a specific segment
     var onPlaySegment: ((MockShot) -> Void)?
     
+    /// Optional navigation callbacks for prev/next controls at edges
+    var onPrev: (() -> Void)? = nil
+    var onNext: (() -> Void)? = nil
+    
     /// State for animation
     @State private var expandedShotID: MockShot.ID?
+    @State private var pulsingMarkerID: MockShot.ID?
     @Namespace private var markerNamespace
     @Environment(\.colorScheme) private var colorScheme
     
-    private let minInteractiveRadius: CGFloat = 16
+    private let minInteractiveRadius: CGFloat = 22  // Increased for 44pt touch target
     private let bandHeight: CGFloat = 56
     
     var body: some View {
         GeometryReader { geo in
             ScrollViewReader { scrollProxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 0) {
-                        Color.clear.frame(width: 20)
-                        timelineContent(geometry: geo)
-                            .id("timeline-content")
-                        Color.clear.frame(width: 20)
+                // For short videos, avoid nested scrolling (fix scroll bug)
+                Group {
+                    if duration < 120 {
+                        HStack(spacing: 0) {
+                            Color.clear.frame(width: 20)
+                            timelineContent(geometry: geo)
+                                .id("timeline-content")
+                            Color.clear.frame(width: 20)
+                        }
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 0) {
+                                Color.clear.frame(width: 20)
+                                timelineContent(geometry: geo)
+                                    .id("timeline-content")
+                                Color.clear.frame(width: 20)
+                            }
+                        }
                     }
                 }
                 .onChange(of: selectedShotID) { oldValue, newValue in
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                         expandedShotID = newValue
+                        pulsingMarkerID = newValue
                     }
                     if let id = newValue {
                         withAnimation(.spring(response: 0.3)) {
                             scrollProxy.scrollTo(id, anchor: .center)
+                        }
+                        // Stop pulsing after a delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            if pulsingMarkerID == id {
+                                withAnimation {
+                                    pulsingMarkerID = nil
+                                }
+                            }
                         }
                     }
                 }
@@ -58,22 +84,58 @@ struct TimelineStripEnhanced: View {
     @ViewBuilder
     private func timelineContent(geometry geo: GeometryProxy) -> some View {
         ZStack(alignment: .leading) {
-                // Baseline axis
-                Capsule()
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.25) : Color.black.opacity(0.12))
-                    .frame(height: 3)
-                    .offset(y: -2)
-                
-                // Markers and segments
-                ForEach(shots) { shot in
-                    shotMarkerOrSegment(shot: shot, width: geo.size.width, height: geo.size.height)
-                        .id(shot.id)
+                // Timeline content (padded inside)
+                Group {
+                    // Baseline axis
+                    Capsule()
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.25) : Color.black.opacity(0.12))
+                        .frame(height: 3)
+                        .offset(y: -2)
+
+                    // Markers and segments
+                    ForEach(shots) { shot in
+                        shotMarkerOrSegment(shot: shot, width: geo.size.width, height: geo.size.height)
+                            .id(shot.id)
+                    }
+
+                    // Playhead indicator
+                    playheadIfNeeded(width: geo.size.width, height: geo.size.height)
                 }
-                
-                // Playhead indicator
-                playheadIfNeeded(width: geo.size.width, height: geo.size.height)
+                .padding(.horizontal, 12)
+
+                // Edge navigation buttons (no horizontal padding to sit at ends)
+                HStack {
+                    Button(action: { onPrev?(); UIImpactFeedbackGenerator(style: .light).impactOccurred() }) {
+                        Image(systemName: "chevron.left.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(TennisColors.courtGreen)
+                            .opacity(canDecrement ? 1.0 : 0.4)
+                    }
+                    .frame(width: 44, height: bandHeight)
+                    .contentShape(Rectangle())
+                    .disabled(!canDecrement)
+                    .accessibilityLabel("Previous shot")
+                    .accessibilityHint(canDecrement ? "Go to previous swing" : "Already at first swing")
+                    
+                    Spacer()
+                    
+                    Button(action: { onNext?(); UIImpactFeedbackGenerator(style: .light).impactOccurred() }) {
+                        Image(systemName: "chevron.right.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(TennisColors.courtGreen)
+                            .opacity(canIncrement ? 1.0 : 0.4)
+                    }
+                    .frame(width: 44, height: bandHeight)
+                    .contentShape(Rectangle())
+                    .disabled(!canIncrement)
+                    .accessibilityLabel("Next shot")
+                    .accessibilityHint(canIncrement ? "Go to next swing" : "Already at last swing")
+                }
+                .padding(.horizontal, 0)
+                .frame(height: bandHeight)
+                .allowsHitTesting(true)
             }
-            .padding(.horizontal, 12)
+            
         
         .frame(height: bandHeight)
         .gesture(
@@ -98,23 +160,27 @@ struct TimelineStripEnhanced: View {
         let isSelected = shot.id == selectedShotID
         let isExpanded = shot.id == expandedShotID
         
-        if isExpanded && isSelected {
-            // Show as segment when selected
-            segmentView(for: shot, width: width)
-                .transition(.asymmetric(
-                    insertion: .scale.combined(with: .opacity),
-                    removal: .opacity
-                ))
-        } else {
-            // Show as dot when not selected
+        ZStack {
+            // Always show the marker dot
             let xPos = xPosition(for: shot.time, width: width)
             markerView(for: shot, selected: isSelected)
-                .position(x: xPos, y: height / 2)
+                .position(x: max(44, min(width - 44, xPos)), y: height / 2)
                 .contentShape(Rectangle().inset(by: -minInteractiveRadius))
                 .onTapGesture {
                     select(shot)
+                    // Auto-play segment when marker selected
                     onPlaySegment?(shot)
                 }
+            
+            // Show segment ABOVE timeline (not replacing dot)
+            if isExpanded && isSelected {
+                segmentView(for: shot, width: width)
+                    .offset(y: -20)  // Position above the timeline
+                    .transition(.asymmetric(
+                        insertion: .scale.combined(with: .opacity),
+                        removal: .opacity
+                    ))
+            }
         }
     }
     
@@ -140,21 +206,27 @@ struct TimelineStripEnhanced: View {
         let segmentWidth = max(44, endX - startX)  // Minimum width for visibility
         
         ZStack {
-            // Segment bar
+            // Segment bar background
             RoundedRectangle(cornerRadius: 8)
-                .fill(shot.type.accentColor.opacity(0.3))
+                .fill(markerColor(for: shot).opacity(0.3))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(shot.type.accentColor, lineWidth: 2)
+                        .stroke(markerColor(for: shot), lineWidth: 2)
                 )
                 .frame(width: segmentWidth, height: 24)
             
-            // Progress fill if playing
+            // Progress fill animation during playback
             if isPlaying && currentTime >= shot.startTime && currentTime <= shot.endTime {
                 let progress = (currentTime - shot.startTime) / shot.duration
                 GeometryReader { innerGeo in
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(shot.type.accentColor.opacity(0.6))
+                        .fill(
+                            LinearGradient(
+                                colors: [markerColor(for: shot), markerColor(for: shot).opacity(0.7)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .frame(width: innerGeo.size.width * CGFloat(progress))
                         .animation(.linear(duration: 0.1), value: progress)
                 }
@@ -185,10 +257,21 @@ struct TimelineStripEnhanced: View {
     
     @ViewBuilder
     private func markerView(for shot: MockShot, selected: Bool) -> some View {
+        let isPulsing = shot.id == pulsingMarkerID
         let baseSize: CGFloat = selected ? 20 : 12
+        
         ZStack {
+            // Pulse animation ring
+            if isPulsing {
+                Circle()
+                    .stroke(markerColor(for: shot), lineWidth: 2)
+                    .frame(width: baseSize + 20, height: baseSize + 20)
+                    .opacity(0)
+                    .modifier(PulseAnimation())
+            }
+            
             Circle()
-                .fill(shot.type.accentColor.opacity(0.9))
+                .fill(markerColor(for: shot).opacity(0.9))
                 .frame(width: baseSize, height: baseSize)
                 .overlay(
                     Circle()
@@ -205,6 +288,37 @@ struct TimelineStripEnhanced: View {
         .frame(minWidth: minInteractiveRadius * 2, minHeight: minInteractiveRadius * 2)
         .scaleEffect(selected ? 1.2 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selected)
+        .accessibilityLabel("\(shot.type.accessibleName), score \(String(format: "%.1f", shot.score))")
+        .accessibilityHint("Double tap to play this segment")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+    
+    // Pulse animation modifier
+    struct PulseAnimation: ViewModifier {
+        @State private var scale: CGFloat = 1.0
+        @State private var opacity: Double = 0.6
+        
+        func body(content: Content) -> some View {
+            content
+                .scaleEffect(scale)
+                .opacity(opacity)
+                .onAppear {
+                    withAnimation(
+                        .easeOut(duration: 1.0)
+                        .repeatForever(autoreverses: false)
+                    ) {
+                        scale = 1.5
+                        opacity = 0
+                    }
+                }
+        }
+    }
+
+    private func markerColor(for shot: MockShot) -> Color {
+        // Color-code by shot quality
+        if shot.score >= 7.5 { return .shotExcellent }
+        if shot.score >= 5.5 { return .shotGood }
+        return .shotNeedsWork
     }
     
     // MARK: - Playhead View
@@ -228,7 +342,9 @@ struct TimelineStripEnhanced: View {
     private func xPosition(for time: Double, width: CGFloat) -> CGFloat {
         guard duration > 0 else { return 0 }
         let clamped = max(0, min(time, duration))
-        return CGFloat(clamped / duration) * max(1, width - 24) + 12
+        // Use content width minus 88 with 44pt padding on both sides
+        let contentWidth = max(1, width - 88)
+        return CGFloat(clamped / duration) * contentWidth + 44
     }
     
     private func nearestShot(atX x: CGFloat, totalWidth: CGFloat) -> MockShot? {
@@ -244,6 +360,12 @@ struct TimelineStripEnhanced: View {
         selectedShotID = shot.id
         currentTime = shot.time
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        
+        // Announce selection for VoiceOver
+        if UIAccessibility.isVoiceOverRunning {
+            let announcement = "\(shot.type.accessibleName) selected, score \(String(format: "%.1f", shot.score))"
+            UIAccessibility.post(notification: .announcement, argument: announcement)
+        }
     }
     
     private func adjustSelection(direction: AccessibilityAdjustmentDirection) {
@@ -269,6 +391,16 @@ struct TimelineStripEnhanced: View {
         }
         let shot = shots[idx]
         return "Shot \(idx + 1) of \(shots.count), \(shot.type.accessibleName)"
+    }
+    
+    private var canDecrement: Bool {
+        guard let id = selectedShotID, let idx = shots.firstIndex(where: { $0.id == id }) else { return false }
+        return idx > 0
+    }
+    
+    private var canIncrement: Bool {
+        guard let id = selectedShotID, let idx = shots.firstIndex(where: { $0.id == id }) else { return false }
+        return idx < shots.count - 1
     }
 }
 
