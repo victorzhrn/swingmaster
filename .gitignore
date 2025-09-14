@@ -112,3 +112,5 @@ AuthKey_*.p8
 GoogleService-Info.plist
 
 .cursor/**
+
+**/*.mlmodel

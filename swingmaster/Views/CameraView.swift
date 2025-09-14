@@ -23,6 +23,7 @@ struct CameraView: View {
     @State private var isProcessing: Bool = false
     @State private var showingPicker: Bool = false
     @State private var showSkeleton: Bool = true
+    @State private var showObjects: Bool = true
 
     let onRecorded: (URL) -> Void
 
@@ -47,6 +48,16 @@ struct CameraView: View {
 
                 if showSkeleton {
                     SkeletonOverlay(pose: camera.latestPose)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                }
+                
+                if showObjects {
+                    RacketOverlay(detection: camera.latestRacket)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                    
+                    BallOverlay(detection: camera.latestBall)
                         .ignoresSafeArea()
                         .transition(.opacity)
                 }
@@ -244,22 +255,23 @@ struct CameraView: View {
         )
         .overlay(alignment: .topTrailing) {
             if !(camera.isRecording || camera.isPaused) {
-                Button(action: { withAnimation { showSkeleton.toggle() } }) {
-                    Image(systemName: showSkeleton ? "eye" : "eye.slash")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color.black.opacity(0.35))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
+                HStack(spacing: 8) {
+                    Button(action: { withAnimation { showSkeleton.toggle() } }) {
+                        Image(systemName: showSkeleton ? "figure.walk" : "figure.walk.slash")
+                            .foregroundColor(showSkeleton ? .white : .gray)
+                    }
+                    .buttonStyle(OverlayToggleStyle())
+                    .accessibilityLabel(showSkeleton ? "Hide skeleton overlay" : "Show skeleton overlay")
+                    
+                    Button(action: { withAnimation { showObjects.toggle() } }) {
+                        Image(systemName: "tennisball")
+                            .foregroundColor(showObjects ? TennisColors.tennisYellow : .gray)
+                    }
+                    .buttonStyle(OverlayToggleStyle())
+                    .accessibilityLabel(showObjects ? "Hide object detection" : "Show object detection")
                 }
                 .padding(.top, 12)
                 .padding(.trailing, 12)
-                .accessibilityLabel(showSkeleton ? "Hide skeleton overlay" : "Show skeleton overlay")
             }
         }
         // Upload removed in MVP MainView flow
@@ -354,6 +366,23 @@ private final class PreviewView: UIView {
     var videoPreviewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
 }
 
+// MARK: - OverlayToggleStyle
+
+private struct OverlayToggleStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 18, weight: .semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.95 : 1)
+    }
+}
 
 // MARK: - VideoPicker (PHPicker wrapper)
 

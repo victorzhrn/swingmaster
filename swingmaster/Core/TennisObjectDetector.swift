@@ -1,0 +1,106 @@
+//
+//  TennisObjectDetector.swift
+//  swingmaster
+//
+//  YOLO-based tennis ball and racket detection
+//
+
+import Foundation
+import Vision
+import CoreML
+import CoreVideo
+import ImageIO
+
+class TennisObjectDetector {
+    private var detectionRequest: VNCoreMLRequest?
+    private let detectionQueue = DispatchQueue(label: "com.swingmaster.yolo", qos: .userInitiated)
+    
+    struct Detection {
+        let racketBox: CGRect?      // Normalized coordinates
+        let ballBox: CGRect?        // Normalized coordinates
+        let racketConfidence: Float
+        let ballConfidence: Float
+        let timestamp: TimeInterval
+    }
+    
+    init() {
+        setupModel()
+    }
+    
+    private func setupModel() {
+        guard let modelURL = Bundle.main.url(forResource: "YOLOv3 Tiny", withExtension: "mlmodelc") else {
+            print("Failed to find YOLO model")
+            return
+        }
+        
+        guard let model = try? VNCoreMLModel(for: MLModel(contentsOf: modelURL)) else {
+            print("Failed to load YOLO model")
+            return
+        }
+        
+        detectionRequest = VNCoreMLRequest(model: model)
+        // Use centerCrop to match the preview layer's resizeAspectFill behavior
+        detectionRequest?.imageCropAndScaleOption = .centerCrop
+    }
+    
+    func detectObjects(_ pixelBuffer: CVPixelBuffer, timestamp: TimeInterval, orientation: CGImagePropertyOrientation = .up) async -> Detection? {
+        return await withCheckedContinuation { continuation in
+            guard let request = detectionRequest else {
+                continuation.resume(returning: nil)
+                return
+            }
+            
+            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
+            
+            detectionQueue.async {
+                do {
+                    try handler.perform([request])
+                    
+                    guard let results = request.results as? [VNRecognizedObjectObservation] else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    
+                    let detection = self.parseResults(results, timestamp: timestamp)
+                    continuation.resume(returning: detection)
+                } catch {
+                    print("YOLO detection error: \(error)")
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+    
+    private func parseResults(_ results: [VNRecognizedObjectObservation], timestamp: TimeInterval) -> Detection {
+        var racketBox: CGRect?
+        var ballBox: CGRect?
+        var racketConfidence: Float = 0
+        var ballConfidence: Float = 0
+        
+        for observation in results {
+            guard let topLabel = observation.labels.first else { continue }
+            
+            let label = topLabel.identifier.lowercased()
+            let confidence = topLabel.confidence
+            
+            // Look for tennis racket or sports ball
+            if label.contains("tennis") && label.contains("racket") && confidence > racketConfidence {
+                racketBox = observation.boundingBox
+                racketConfidence = confidence
+            } else if (label.contains("sports") && label.contains("ball")) || label.contains("tennis ball") {
+                if confidence > ballConfidence {
+                    ballBox = observation.boundingBox
+                    ballConfidence = confidence
+                }
+            }
+        }
+        
+        return Detection(
+            racketBox: racketBox,
+            ballBox: ballBox,
+            racketConfidence: racketConfidence,
+            ballConfidence: ballConfidence,
+            timestamp: timestamp
+        )
+    }
+}

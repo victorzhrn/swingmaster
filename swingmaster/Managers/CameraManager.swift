@@ -10,6 +10,7 @@
 import Foundation
 import AVFoundation
 import Vision
+import ImageIO
 
 /// CameraManager is responsible for:
 /// - Requesting camera & microphone permissions
@@ -38,6 +39,11 @@ final class CameraManager: NSObject, ObservableObject {
     // Pose processing
     private let poseProcessor = PoseProcessor()
     private var frameCount: Int = 0
+
+    // Object detection
+    private let objectDetector = TennisObjectDetector()
+    @Published var latestRacket: RacketDetection?
+    @Published var latestBall: BallDetection?
 
     // Latest pose for UI overlay
     @Published var latestPose: PoseFrame?
@@ -227,17 +233,48 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let timestamp = CMTimeGetSeconds(pts)
+        
+        // Get the proper orientation for Vision framework
+        // For back camera in portrait mode, we typically need .right
+        let orientation: CGImagePropertyOrientation = .right
 
         Task { [weak self] in
             guard let self = self else { return }
-            if let pose = await self.poseProcessor.processFrame(pixelBuffer, timestamp: timestamp) {
-                await MainActor.run {
-                    self.latestPose = pose
-                }
-            } else {
-                // Clear pose occasionally when detection fails to reduce ghosting
-                await MainActor.run {
-                    self.latestPose = nil
+            
+            // Run both detections concurrently
+            async let poseTask = self.poseProcessor.processFrame(pixelBuffer, timestamp: timestamp)
+            async let objectTask = self.objectDetector.detectObjects(pixelBuffer, timestamp: timestamp, orientation: orientation)
+            
+            let (pose, objectDetection) = await (poseTask, objectTask)
+            
+            await MainActor.run {
+                self.latestPose = pose
+                
+                if let detection = objectDetection {
+                    // Update racket detection
+                    if let racketBox = detection.racketBox, detection.racketConfidence > 0.3 {
+                        self.latestRacket = RacketDetection(
+                            boundingBox: racketBox,
+                            confidence: detection.racketConfidence,
+                            timestamp: detection.timestamp
+                        )
+                    } else {
+                        self.latestRacket = nil
+                    }
+                    
+                    // Update ball detection
+                    if let ballBox = detection.ballBox, detection.ballConfidence > 0.3 {
+                        self.latestBall = BallDetection(
+                            boundingBox: ballBox,
+                            confidence: detection.ballConfidence,
+                            timestamp: detection.timestamp
+                        )
+                    } else {
+                        self.latestBall = nil
+                    }
+                } else {
+                    self.latestRacket = nil
+                    self.latestBall = nil
                 }
             }
         }
