@@ -40,9 +40,9 @@ public enum ShotType: String, Codable, CaseIterable, Sendable {
     var accentColor: Color {
         switch self {
         case .forehand: return TennisColors.tennisGreen
-        case .backhand: return TennisColors.courtGreen
+        case .backhand: return TennisColors.aceGreen
         case .serve: return TennisColors.clayOrange
-        case .unknown: return Color.gray
+        case .unknown: return Color.gray.opacity(0.6)
         }
     }
 }

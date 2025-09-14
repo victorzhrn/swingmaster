@@ -18,7 +18,7 @@ struct AnalysisView: View {
     @State private var currentTime: Double = 0
     @State private var isPlaying: Bool = false
     @State private var playingSegment: MockShot? = nil
-    @State private var showPlaybackControls: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollView {
@@ -43,23 +43,20 @@ struct AnalysisView: View {
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
-                    .overlay(alignment: .bottom) {
-                        // Custom playback controls overlay
-                        if showPlaybackControls {
-                            playbackControlsOverlay
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
+                    .overlay(alignment: .bottomLeading) {
+                        persistentVideoControls
+                            .padding(.leading, 12)
+                            .padding(.bottom, 12)
                     }
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3)) {
-                            showPlaybackControls.toggle()
-                        }
+                    .overlay(alignment: .bottom) {
+                        shotNavigator
+                            .padding(.bottom, 8)
                     }
                     .accessibilityLabel("Video player")
                 } else {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.black)
+                            .fill(Color(UIColor.secondarySystemBackground))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
@@ -93,8 +90,7 @@ struct AnalysisView: View {
             )
             .padding(.horizontal, 16)
 
-            // Chips Row (primary large tap targets) with prev/next
-            ShotChipsRow(shots: shots, selectedShotID: $selectedShotID, onPrev: selectPrev, onNext: selectNext)
+            // Removed ShotChipsRow in favor of minimal navigator overlay on video
 
             // Insight Card
             enhancedInsightCard
@@ -105,7 +101,7 @@ struct AnalysisView: View {
         }
         .padding(.top, 8)
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(Color(UIColor.systemBackground).ignoresSafeArea())
         .onAppear {
             if selectedShotID == nil, let first = shots.first { selectedShotID = first.id; currentTime = first.time }
         }
@@ -126,46 +122,82 @@ struct AnalysisView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        
     }
 
     // MARK: - Subviews
     
-    private var playbackControlsOverlay: some View {
-        HStack(spacing: 20) {
-            Button(action: { 
-                isPlaying.toggle()
-                if !isPlaying { playingSegment = nil }
-            }) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
+    private var persistentVideoControls: some View {
+        HStack(spacing: 16) {
+            // Play/Pause (always visible)
+            Button(action: togglePlayback) {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(.white.opacity(0.9))
+                    .background(
+                        Circle()
+                            .fill(Color.black.opacity(0.3))
+                            .blur(radius: 10)
+                    )
             }
             
+            // Current segment info (if playing)
             if let segment = playingSegment {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Playing \(segment.type.accessibleName)")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("\(timeString(segment.startTime)) - \(timeString(segment.endTime))")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                }
-                .foregroundColor(.white.opacity(0.9))
+                Text(segment.type.shortLabel)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(segment.type.accentColor.opacity(0.8))
+                    )
+                    .foregroundColor(.white)
+            }
+        }
+        .padding(12)
+    }
+
+    private var currentShotIndex: Int {
+        if let id = selectedShotID, let idx = shots.firstIndex(where: { $0.id == id }) {
+            return idx
+        }
+        return 0
+    }
+
+    private var shotNavigator: some View {
+        HStack {
+            Button(action: selectPrev) {
+                Image(systemName: "chevron.left.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(.white.opacity(0.85))
             }
             
             Spacer()
             
-            Button(action: replaySegment) {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 18))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
+            Text("Shot \(currentShotIndex + 1) of \(shots.count)")
+                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .foregroundColor(.white.opacity(0.95))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.black.opacity(0.25))
+                .clipShape(Capsule())
+            
+            Spacer()
+            
+            Button(action: selectNext) {
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(.white.opacity(0.85))
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 20)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
+        .clipShape(Capsule())
+        .padding(.horizontal, 16)
     }
+
+    
 
     private var enhancedInsightCard: some View {
         let selected = shots.first(where: { $0.id == selectedShotID })
@@ -176,7 +208,7 @@ struct AnalysisView: View {
                     .font(.system(size: 17, weight: .bold))
                 Spacer()
                 Text(String(format: "%.1f", selected?.score ?? 0))
-                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    .modifier(TennisTypography.MetricStyle())
                     .foregroundColor(scoreColor(selected?.score ?? 0))
             }
             .padding(.bottom, 4)
@@ -186,30 +218,30 @@ struct AnalysisView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("What you did well", systemImage: "checkmark.circle.fill")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.green)
+                        .foregroundColor(TennisColors.aceGreen)
                     ForEach(strengths, id: \.self) { s in
                         HStack(alignment: .top, spacing: 8) {
                             Circle()
-                                .fill(Color.green)
+                                .fill(TennisColors.aceGreen)
                                 .frame(width: 4, height: 4)
                                 .offset(y: 6)
                             Text(s)
                                 .font(.system(size: 15))
-                                .foregroundColor(.white)
+                                .foregroundColor(Color.primary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
             }
             
-            Divider().background(Color.white.opacity(0.1))
+            Divider().background((colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)))
             
             // Improvements
             if let improvements = selected?.improvements, !improvements.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Focus on improving", systemImage: "arrow.triangle.2.circlepath")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.yellow)
+                        .foregroundColor(TennisColors.tennisYellow)
                     ForEach(Array(improvements.enumerated()), id: \.offset) { index, text in
                         HStack(alignment: .top, spacing: 8) {
                             Circle()
@@ -218,7 +250,7 @@ struct AnalysisView: View {
                                 .offset(y: 6)
                             Text(text)
                                 .font(.system(size: 15, weight: index == 0 ? .medium : .regular))
-                                .foregroundColor(.white.opacity(index == 0 ? 1 : 0.9))
+                                .foregroundColor(Color.primary.opacity(index == 0 ? 1 : 0.95))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -226,34 +258,34 @@ struct AnalysisView: View {
             }
         }
         .padding(18)
-        .background(.ultraThinMaterial)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(UIColor.secondarySystemBackground))
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                .stroke(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func scoreColor(_ score: Float) -> Color {
-        if score >= 7.5 { return .green }
-        if score >= 5.5 { return .yellow }
-        return .orange
+        if score >= 7.5 { return TennisColors.aceGreen }
+        if score >= 5.5 { return TennisColors.tennisYellow }
+        return TennisColors.clayOrange
     }
 
     // MARK: - Actions
     
+    private func togglePlayback() {
+        isPlaying.toggle()
+        if !isPlaying { playingSegment = nil }
+    }
+
     private func playSegment(_ shot: MockShot) {
         playingSegment = shot
         currentTime = shot.startTime
         isPlaying = true
-        showPlaybackControls = true
-        
-        // Hide controls after 3 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            withAnimation {
-                showPlaybackControls = false
-            }
-        }
     }
     
     private func replaySegment() {

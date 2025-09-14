@@ -22,56 +22,62 @@ struct TimelineStripEnhanced: View {
     /// State for animation
     @State private var expandedShotID: MockShot.ID?
     @Namespace private var markerNamespace
+    @Environment(\.colorScheme) private var colorScheme
     
     private let minInteractiveRadius: CGFloat = 16
     private let bandHeight: CGFloat = 56
     
     var body: some View {
         GeometryReader { geo in
-            timelineContent(geometry: geo)
-        }
-        .frame(height: bandHeight)
-        .onChange(of: selectedShotID) { oldValue, newValue in
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                expandedShotID = newValue
+            ScrollViewReader { scrollProxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        Color.clear.frame(width: 20)
+                        timelineContent(geometry: geo)
+                            .id("timeline-content")
+                        Color.clear.frame(width: 20)
+                    }
+                }
+                .onChange(of: selectedShotID) { oldValue, newValue in
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                        expandedShotID = newValue
+                    }
+                    if let id = newValue {
+                        withAnimation(.spring(response: 0.3)) {
+                            scrollProxy.scrollTo(id, anchor: .center)
+                        }
+                    }
+                }
             }
         }
+        .frame(height: bandHeight)
     }
     
     // MARK: - Main Timeline Content
     
     @ViewBuilder
     private func timelineContent(geometry geo: GeometryProxy) -> some View {
-        ZStack {
-            // Glass background strip
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                )
-            
-            // Timeline content
-            ZStack(alignment: .leading) {
+        ZStack(alignment: .leading) {
                 // Baseline axis
                 Capsule()
-                    .fill(Color.white.opacity(0.2))
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.25) : Color.black.opacity(0.12))
                     .frame(height: 3)
                     .offset(y: -2)
                 
                 // Markers and segments
                 ForEach(shots) { shot in
                     shotMarkerOrSegment(shot: shot, width: geo.size.width, height: geo.size.height)
+                        .id(shot.id)
                 }
                 
                 // Playhead indicator
                 playheadIfNeeded(width: geo.size.width, height: geo.size.height)
             }
             .padding(.horizontal, 12)
-        }
+        
         .frame(height: bandHeight)
         .gesture(
-            DragGesture(minimumDistance: 0)
+            DragGesture(minimumDistance: 10)
                 .onEnded { value in
                     let x = value.location.x
                     if let nearest = nearestShot(atX: x, totalWidth: geo.size.width) {
@@ -107,6 +113,7 @@ struct TimelineStripEnhanced: View {
                 .contentShape(Rectangle().inset(by: -minInteractiveRadius))
                 .onTapGesture {
                     select(shot)
+                    onPlaySegment?(shot)
                 }
         }
     }
@@ -206,12 +213,12 @@ struct TimelineStripEnhanced: View {
     private func playheadView() -> some View {
         VStack(spacing: 0) {
             Circle()
-                .fill(Color.white)
+                .fill(colorScheme == .dark ? Color.white : Color.black)
                 .frame(width: 8, height: 8)
-                .shadow(color: .black.opacity(0.5), radius: 2)
+                .shadow(color: (colorScheme == .dark ? Color.black.opacity(0.5) : Color.black.opacity(0.2)), radius: 2)
             
             Rectangle()
-                .fill(Color.white.opacity(0.8))
+                .fill((colorScheme == .dark ? Color.white.opacity(0.8) : Color.black.opacity(0.6)))
                 .frame(width: 2, height: 20)
         }
     }
