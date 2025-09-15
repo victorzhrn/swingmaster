@@ -44,6 +44,11 @@ final class CameraManager: NSObject, ObservableObject {
     private let objectDetector = TennisObjectDetector()
     @Published var latestRacket: RacketDetection?
     @Published var latestBall: BallDetection?
+    
+    // Preview support
+    private var isRunningInPreview: Bool {
+        ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
 
     // Latest pose for UI overlay
     @Published var latestPose: PoseFrame?
@@ -60,6 +65,14 @@ final class CameraManager: NSObject, ObservableObject {
 
     /// Requests camera and microphone permissions concurrently.
     func requestPermissions(completion: @escaping (_ cameraGranted: Bool, _ micGranted: Bool) -> Void) {
+        // In preview, just pretend permissions are granted
+        if isRunningInPreview {
+            self.cameraAuthStatus = .authorized
+            self.micAuthGranted = true
+            completion(true, true)
+            return
+        }
+        
         let group = DispatchGroup()
         var cameraGranted = false
         var micGranted = false
@@ -92,6 +105,12 @@ final class CameraManager: NSObject, ObservableObject {
 
     /// Configures inputs/outputs. Safe to call multiple times; does nothing if already configured.
     func configureSessionIfNeeded() {
+        // Skip session configuration in previews
+        if isRunningInPreview {
+            print("Running in Preview - skipping camera session configuration")
+            return
+        }
+        
         sessionQueue.async {
             guard self.session.inputs.isEmpty else { return }
 
@@ -138,6 +157,10 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     func startSession() {
+        if isRunningInPreview {
+            isSessionRunning = true
+            return
+        }
         sessionQueue.async {
             guard !self.session.isRunning else { return }
             self.session.startRunning()
@@ -146,6 +169,10 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     func stopSession() {
+        if isRunningInPreview {
+            isSessionRunning = false
+            return
+        }
         sessionQueue.async {
             guard self.session.isRunning else { return }
             self.session.stopRunning()

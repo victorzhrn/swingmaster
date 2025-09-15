@@ -435,4 +435,8 @@ private struct VideoPicker: UIViewControllerRepresentable {
     }
 }
 
-
+#Preview("CameraView") {
+    CameraView { url in
+        print("Recorded video at: \(url)")
+    }
+}

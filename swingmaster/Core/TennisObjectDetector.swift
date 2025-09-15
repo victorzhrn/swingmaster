@@ -28,19 +28,45 @@ class TennisObjectDetector {
     }
     
     private func setupModel() {
-        guard let modelURL = Bundle.main.url(forResource: "YOLOv3 Tiny", withExtension: "mlmodelc") else {
-            print("Failed to find YOLO model")
+        // Check if running in preview
+        let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+        
+        if isPreview {
+            print("Running in Preview - skipping YOLO model load")
             return
         }
         
-        guard let model = try? VNCoreMLModel(for: MLModel(contentsOf: modelURL)) else {
-            print("Failed to load YOLO model")
+        // Try both compiled and uncompiled model extensions
+        let modelNames = [
+            ("YOLOv3 Tiny", "mlmodelc"),
+            ("YOLOv3 Tiny", "mlmodel"),
+            ("YOLOv3_Tiny", "mlmodelc"),
+            ("YOLOv3_Tiny", "mlmodel")
+        ]
+        
+        var modelURL: URL?
+        for (name, ext) in modelNames {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                modelURL = url
+                break
+            }
+        }
+        
+        guard let finalURL = modelURL else {
+            print("Failed to find YOLO model in bundle")
             return
         }
         
-        detectionRequest = VNCoreMLRequest(model: model)
-        // Use centerCrop to match the preview layer's resizeAspectFill behavior
-        detectionRequest?.imageCropAndScaleOption = .centerCrop
+        do {
+            let mlModel = try MLModel(contentsOf: finalURL)
+            let model = try VNCoreMLModel(for: mlModel)
+            detectionRequest = VNCoreMLRequest(model: model)
+            // Use centerCrop to match the preview layer's resizeAspectFill behavior
+            detectionRequest?.imageCropAndScaleOption = .centerCrop
+            print("YOLO model loaded successfully from: \(finalURL.lastPathComponent)")
+        } catch {
+            print("Failed to load YOLO model: \(error)")
+        }
     }
     
     func detectObjects(_ pixelBuffer: CVPixelBuffer, timestamp: TimeInterval, orientation: CGImagePropertyOrientation = .up) async -> Detection? {
