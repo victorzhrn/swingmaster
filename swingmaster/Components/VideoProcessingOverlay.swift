@@ -51,3 +51,47 @@ struct VideoProcessingOverlay: View {
         }
     }
 }
+
+/// Overlay displayed when a session's video processing fails.
+/// Shows a succinct error message and a retry action.
+struct ProcessingErrorOverlay: View {
+    let error: String
+    let onRetry: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.35))
+            
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.red)
+                
+                Text("Processing failed")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+                
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .frame(maxWidth: 200)
+                
+                Button(action: onRetry) {
+                    Text("Retry")
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.15))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+            }
+            .padding(16)
+        }
+        .cornerRadius(16)
+    }
+}
