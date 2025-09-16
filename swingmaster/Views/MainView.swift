@@ -12,9 +12,8 @@ import Foundation
 struct MainView: View {
     @EnvironmentObject var sessionStore: SessionStore
     let onSelectSession: (Session) -> Void    
-    // Mock data for coach insights
-    private let coachInsight = "Your forehand contact point has improved 15% this week. Focus on maintaining shoulder rotation through impact."
-    private let coachCategory = "Forhand"
+    @State private var selectedInsight: CoachInsight?
+    private let mockInsights = MockCoachData.insights
     private let userRating = "USTR 3.5 → 4.0"
     private let userName = "Victor"
 
@@ -30,9 +29,20 @@ struct MainView: View {
                             .padding(.horizontal, Spacing.screenMargin)
                             .padding(.top, Spacing.medium)
                         
-                        // Coach card
-                        CoachCard(category: coachCategory, insight: coachInsight)
-                            .padding(.horizontal, Spacing.screenMargin)
+                        // Coach carousel
+                        if !mockInsights.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("AI Coach Insights")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, Spacing.screenMargin)
+                                
+                                CoachCardCarousel(
+                                    insights: mockInsights,
+                                    selectedInsight: $selectedInsight
+                                )
+                            }
+                        }
                         
                         // Sessions section
                         VStack(alignment: .leading, spacing: Spacing.medium) {
@@ -75,6 +85,11 @@ struct MainView: View {
                 )
             }
             .navigationBarHidden(true)
+            .sheet(item: $selectedInsight) { insight in
+                NavigationView {
+                    CoachDetailView(insight: insight)
+                }
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
