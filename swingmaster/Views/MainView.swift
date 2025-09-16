@@ -29,14 +29,18 @@ struct MainView: View {
                             .padding(.horizontal, Spacing.screenMargin)
                             .padding(.top, Spacing.medium)
                         
-                        // Coach carousel
-                        if !mockInsights.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("AI Coach Insights")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.secondary)
+                        // Coach insights section
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("AI Coach Insights")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, Spacing.screenMargin)
+                            
+                            // Simple logic: Show welcome if no sessions, else show carousel
+                            if sessionStore.sessions.isEmpty {
+                                WelcomeCoachCard()
                                     .padding(.horizontal, Spacing.screenMargin)
-                                
+                            } else if !mockInsights.isEmpty {
                                 CoachCardCarousel(
                                     insights: mockInsights,
                                     selectedInsight: $selectedInsight
