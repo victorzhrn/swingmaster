@@ -1,4 +1,4 @@
- //
+//
 //  ContentView.swift
 //  swingmaster
 //
@@ -10,114 +10,63 @@ import PhotosUI
 
 struct ContentView: View {
     @StateObject private var sessionStore = SessionStore()
+    @StateObject private var processingManager = ProcessingManager.shared
+    @StateObject private var navigationState = NavigationState()
     
-    private enum NavigationState {
-        case main
-        case camera
-        case processing(URL)
-        case analysis(URL, Double, [MockShot])
-    }
-    
-    @State private var navigationState: NavigationState = .main
     @State private var showingFilePicker = false
     @State private var selectedVideoItem: PhotosPickerItem?
     
     var body: some View {
-        ZStack {
-            switch navigationState {
-            case .main:
-                MainView(onSelectSession: { session in
+        NavigationStack(path: $navigationState.path) {
+            MainView(onSelectSession: { session in
+                if session.processingStatus == .complete {
+                    navigationState.push(.analysis(session))
+                }
+            })
+            .environmentObject(sessionStore)
+            .environmentObject(processingManager)
+            .safeAreaInset(edge: .bottom) {
+                HStack {
+                    Spacer()
+                    FloatingActionMenu()
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
+            }
+            .navigationDestination(for: NavigationDestination.self) { destination in
+                switch destination {
+                case .camera:
+                    CameraView(onRecorded: { videoURL in
+                        handleNewVideo(videoURL, source: .camera)
+                    })
+                case .analysis(let session):
                     let url = session.videoURL
                     if let persisted = AnalysisStore.load(videoURL: url) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            navigationState = .analysis(url, persisted.duration, persisted.shots)
-                        }
+                        AnalysisView(videoURL: url, duration: persisted.duration, shots: persisted.shots)
                     } else {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            navigationState = .processing(url)
-                        }
+                        AnalysisView(videoURL: url, duration: VideoStorage.getDurationSeconds(for: url), shots: [])
                     }
-                })
-                    .environmentObject(sessionStore)
-                    .safeAreaInset(edge: .bottom) {
-                        HStack {
-                            Spacer()
-                            FloatingActionMenu()
-                            Spacer()
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 16)
-                    }
-                    .transition(.opacity)
-                
-            case .camera:
-                CameraView(onRecorded: { tempURL in
-                    let savedURL = VideoStorage.saveVideo(from: tempURL)
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        navigationState = .processing(savedURL)
-                    }
-                })
-                .overlay(alignment: .topLeading) {
-                    BackButton {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            navigationState = .main
-                        }
-                    }
-                    .padding(.leading, 12)
-                    .padding(.top, 12)
+                case .picker:
+                    EmptyView()
                 }
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-                
-            case .processing(let url):
-                ProcessingView(
-                    videoURL: url,
-                    geminiAPIKey: "AIzaSyDWvavah1RCf7acKBESKtp_vdVNf7cii8w",
-                    onComplete: { results in
-                        let duration = max(1, VideoStorage.getDurationSeconds(for: url))
-                        let shots = results.map { res in
-                            let t = (res.segment.startTime + res.segment.endTime) / 2.0
-                            let score = max(0, min(10, res.score))
-                            return MockShot(
-                                id: res.id,
-                                time: t,
-                                type: res.swingType,
-                                score: score,
-                                issue: res.improvements.first ?? "",
-                                startTime: res.segment.startTime,
-                                endTime: res.segment.endTime,
-                                strengths: res.strengths,
-                                improvements: res.improvements
-                            )
-                        }
-                        
-                        // Persist analysis
-                        AnalysisStore.save(videoURL: url, duration: duration, shots: shots)
-                        sessionStore.save(videoURL: url, shotCount: shots.count)
-                        
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            navigationState = .analysis(url, duration, shots)
-                        }
+            }
+        }
+        .sheet(item: $navigationState.activeSheet) { sheet in
+            switch sheet {
+            case .recordOptions:
+                RecordOptionsModal(
+                    onRecord: {
+                        navigationState.push(.camera)
                     },
-                    onCancel: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            navigationState = .main
-                        }
+                    onUpload: {
+                        showingFilePicker = true
                     }
                 )
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-                
-            case .analysis(let url, let duration, let shots):
-                AnalysisView(videoURL: url, duration: duration, shots: shots)
-                    .overlay(alignment: .topLeading) {
-                        BackButton {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                navigationState = .main
-                            }
-                        }
-                        .padding(.leading, 12)
-                        .padding(.top, 12)
-                    }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                .presentationDetents([.height(340)])
+                .presentationDragIndicator(.visible)
+            case .picker:
+                EmptyView()
             }
         }
         .photosPicker(
@@ -132,30 +81,62 @@ struct ContentView: View {
                 if let movie = try? await item.loadTransferable(type: Movie.self) {
                     let savedURL = VideoStorage.saveVideo(from: movie.url)
                     await MainActor.run {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            navigationState = .processing(savedURL)
-                        }
+                        handleNewVideo(savedURL, source: .upload)
                     }
                 }
             }
         }
         .environmentObject(sessionStore)
+        .environmentObject(processingManager)
+    }
+    
+    private enum VideoSource {
+        case camera
+        case upload
+    }
+    
+    private func handleNewVideo(_ url: URL, source: VideoSource) {
+        var session = Session(
+            id: UUID(),
+            date: Date(),
+            videoPath: url.lastPathComponent,
+            shotCount: 0
+        )
+        session.processingStatus = .pending
+        
+        Task {
+            if let thumbnail = await VideoStorage.generateThumbnail(for: url, at: 1.0) {
+                sessionStore.updateSession(session.id) { 
+                    $0.thumbnailPath = thumbnail 
+                }
+            }
+        }
+        
+        sessionStore.add(session)
+        
+        processingManager.startProcessing(
+            for: session, 
+            videoURL: url, 
+            sessionStore: sessionStore
+        )
+        
+        navigationState.popToRoot()
+        
+        withAnimation(.spring()) {
+            processingManager.scrollToSession = session.id
+        }
     }
     
     @ViewBuilder
     private func FloatingActionMenu() -> some View {
-        if case .main = navigationState {
-            FloatingActionButtonWithMenu(
-                onRecord: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        navigationState = .camera
-                    }
-                },
-                onUpload: {
-                    showingFilePicker = true
-                }
-            )
-        }
+        FloatingActionButtonWithMenu(
+            onRecord: {
+                navigationState.push(.camera)
+            },
+            onUpload: {
+                showingFilePicker = true
+            }
+        )
     }
 }
 

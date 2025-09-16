@@ -7,11 +7,63 @@
 
 import Foundation
 
-struct Session: Identifiable, Codable, Equatable {
+extension Session {
+    enum ProcessingStatus: Codable, Equatable, Hashable {
+        case pending
+        case extractingPoses(progress: Float)
+        case calculatingMetrics
+        case detectingSwings
+        case validatingSwings(current: Int, total: Int)
+        case analyzingSwings(current: Int, total: Int)
+        case complete
+        case failed(error: String)
+        
+        var isProcessing: Bool {
+            switch self {
+            case .complete, .failed:
+                return false
+            default:
+                return true
+            }
+        }
+        
+        var canShowPartialResults: Bool {
+            switch self {
+            case .validatingSwings, .analyzingSwings, .complete:
+                return true
+            default:
+                return false
+            }
+        }
+        
+        var statusText: String {
+            switch self {
+            case .pending: return "Preparing..."
+            case .extractingPoses: return "Detecting motion"
+            case .calculatingMetrics: return "Calculating metrics"
+            case .detectingSwings: return "Finding swings"
+            case .validatingSwings(let c, let t): return "Validating \(c)/\(t)"
+            case .analyzingSwings(let c, let t): return "AI Analysis \(c)/\(t)"
+            case .complete: return "Ready"
+            case .failed(let error): return "Failed: \(error)"
+            }
+        }
+    }
+}
+
+struct Session: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     let date: Date
     let videoPath: String
-    let shotCount: Int
+    var shotCount: Int
+    
+    var processingStatus: ProcessingStatus = .pending
+    var processorID: UUID?
+    
+    var lastError: String?
+    var retryCount: Int = 0
+    var maxRetries: Int = 3
+    var thumbnailPath: String?
 
     /// Resolves the stored `videoPath` into a usable file URL.
     /// We store only the file name for stability across reinstalls.
@@ -53,6 +105,18 @@ final class SessionStore: ObservableObject {
 
     func delete(_ session: Session) {
         sessions.removeAll { $0.id == session.id }
+        persist()
+    }
+    
+    func updateSession(_ id: UUID, update: (inout Session) -> Void) {
+        if let index = sessions.firstIndex(where: { $0.id == id }) {
+            update(&sessions[index])
+            persist()
+        }
+    }
+    
+    func add(_ session: Session) {
+        sessions.insert(session, at: 0)
         persist()
     }
 

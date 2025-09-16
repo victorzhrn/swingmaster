@@ -86,4 +86,40 @@ private final class ProcessorHolder: ObservableObject {
     @Published var processor: VideoProcessor?
 }
 
+// MARK: - Error Overlay
+
+struct ProcessingErrorOverlay: View {
+    let error: String
+    let onRetry: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.red.opacity(0.1))
+                .overlay(Color.black.opacity(0.4))
+            
+            VStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.red)
+                
+                Text("Processing Failed")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                
+                Button(action: onRetry) {
+                    Text("Retry")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 5)
+                        .background(Color.white)
+                        .cornerRadius(10)
+                }
+            }
+        }
+        .cornerRadius(16)
+    }
+}
+
 

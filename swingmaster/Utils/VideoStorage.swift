@@ -55,6 +55,26 @@ enum VideoStorage {
         let asset = AVAsset(url: url)
         return CMTimeGetSeconds(asset.duration)
     }
+    
+    /// Async version of generateThumbnail
+    static func generateThumbnail(for url: URL, at seconds: Double = 1.0) async -> String? {
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                if let image = generateThumbnail(for: url, at: seconds) {
+                    let fileName = UUID().uuidString + ".jpg"
+                    let path = documentsDirectory.appendingPathComponent(fileName)
+                    if let data = image.jpegData(compressionQuality: 0.8) {
+                        try? data.write(to: path)
+                        continuation.resume(returning: fileName)
+                    } else {
+                        continuation.resume(returning: nil)
+                    }
+                } else {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
 }
 
 
