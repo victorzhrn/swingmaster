@@ -34,8 +34,13 @@ struct SkeletonOverlay: View {
                     context.stroke(path, with: .color(color), lineWidth: 4)
                 }
 
-                // Draw joints
+                // Draw joints (excluding facial features for cleaner visualization)
                 for (name, p) in pose.joints {
+                    // Skip facial joints entirely - focus on body mechanics
+                    if [.nose, .leftEye, .rightEye, .leftEar, .rightEar].contains(name) {
+                        continue
+                    }
+                    
                     let conf = pose.confidences[name] ?? 0
                     let color = Self.color(for: conf).opacity(0.7 + Double(conf) * 0.3)
                     let pt = Self.convert(point: p, in: size)

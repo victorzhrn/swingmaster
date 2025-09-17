@@ -38,10 +38,10 @@ class TennisObjectDetector {
         
         // Try both compiled and uncompiled model extensions
         let modelNames = [
-            ("YOLOv3 Tiny", "mlmodelc"),
-            ("YOLOv3 Tiny", "mlmodel"),
-            ("YOLOv3_Tiny", "mlmodelc"),
-            ("YOLOv3_Tiny", "mlmodel")
+            ("YOLOv3 FP16", "mlmodelc"),
+            ("YOLOv3 FP16", "mlmodel"),
+            ("YOLOv3_FP16", "mlmodelc"),
+            ("YOLOv3_FP16", "mlmodel")
         ]
         
         var modelURL: URL?
