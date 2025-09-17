@@ -39,12 +39,15 @@ public final class GeminiValidator {
         self.modelName = modelName
     }
 
-    // MARK: - Swing Validation (30 frames)
+    // MARK: - Swing Validation (8 sampled frames from 30)
 
     public func validateSwing(_ potential: PotentialSwing) async throws -> ValidatedSwing? {
-        let images = try await prepareImages(from: potential.frames)
-        let prompt = makeValidationPrompt(potential: potential)
-        logger.log("[Gemini] Validation frames sent=\(images.count)")
+        // Sample approximately 8 frames from the 30 frames
+        // Weight sampling toward the peak for better accuracy
+        let sampledFrames = sampleFramesForValidation(potential.frames, peakIndex: potential.peakFrameIndex, targetCount: 8)
+        let images = try await prepareImages(from: sampledFrames.map { $0.frame })
+        let prompt = makeValidationPrompt(potential: potential, sampledFrameIndices: sampledFrames.map { $0.originalIndex })
+        logger.log("[Gemini] Validation frames sent=\(images.count) (sampled from \(potential.frames.count))")
         logger.log("[Gemini] Validation prompt head=\(self.firstWords(prompt, count: 10), privacy: .public)")
         let response = try await callGeminiAPI(images: images, prompt: prompt)
         logger.log("[Gemini] Validation response (len=\(response.count)): \(response, privacy: .public)")
@@ -87,6 +90,48 @@ public final class GeminiValidator {
         let response = try await callGeminiAPI(images: images, prompt: prompt)
         logger.log("[Gemini] Analysis response (len=\(response.count)): \(response, privacy: .public)")
         return parseAnalysisResponse(response, swing: swing, metrics: metrics)
+    }
+
+    // MARK: - Frame Sampling
+    
+    private func sampleFramesForValidation(_ frames: [PoseFrame], peakIndex: Int, targetCount: Int) -> [(originalIndex: Int, frame: PoseFrame)] {
+        guard frames.count > targetCount else {
+            // If we have fewer frames than target, return all
+            return frames.enumerated().map { ($0.offset, $0.element) }
+        }
+        
+        var selectedIndices: Set<Int> = []
+        
+        // Always include first and last frames
+        selectedIndices.insert(0)
+        selectedIndices.insert(frames.count - 1)
+        
+        // Always include peak frame
+        selectedIndices.insert(peakIndex)
+        
+        // Add frames around the peak (higher density near peak)
+        let nearPeakOffsets = [-6, -3, 3, 6]
+        for offset in nearPeakOffsets {
+            let idx = peakIndex + offset
+            if idx >= 0 && idx < frames.count {
+                selectedIndices.insert(idx)
+            }
+        }
+        
+        // If we need more frames, add evenly distributed ones
+        while selectedIndices.count < targetCount && selectedIndices.count < frames.count {
+            let step = frames.count / targetCount
+            for i in stride(from: 0, to: frames.count, by: step) {
+                selectedIndices.insert(i)
+                if selectedIndices.count >= targetCount { break }
+            }
+        }
+        
+        // Convert to sorted array and return with original indices
+        let sortedIndices = selectedIndices.sorted()
+        return sortedIndices.prefix(targetCount).map { idx in
+            (originalIndex: idx, frame: frames[idx])
+        }
     }
 
     // MARK: - Helper Methods (Scaffold)
@@ -182,26 +227,49 @@ public final class GeminiValidator {
     }
 
     // Prompt construction
-    private func makeValidationPrompt(potential: PotentialSwing) -> String {
+    private func makeValidationPrompt(potential: PotentialSwing, sampledFrameIndices: [Int]) -> String {
+        let frameDescription = sampledFrameIndices.enumerated().map { idx, originalIdx in
+            "Frame \(idx): original frame \(originalIdx)"
+        }.joined(separator: ", ")
+        
         return """
-        Analyze these 30 frames showing a potential tennis swing.
-        The peak motion occurs at frame \(potential.peakFrameIndex).
+        Analyze these \(sampledFrameIndices.count) sampled frames from a 30-frame sequence showing a potential tennis swing.
+        These frames are sampled from the original sequence at indices: \(sampledFrameIndices.map(String.init).joined(separator: ", "))
+        The peak motion occurs at original frame \(potential.peakFrameIndex).
 
         Tasks:
         1. Confirm if this is a valid tennis swing
-        2. Identify exact start/end frames
-        3. Classify swing type
-        4. Identify the frame index for each key moment:
+        2. Identify exact start/end frames (use ORIGINAL frame numbers 0-29)
+        3. Classify swing type by observing body rotation and hand grip (assume right-handed player):
+           
+           FOREHAND vs BACKHAND Detection:
+           - FOREHAND: 
+             * Body rotates COUNTER-CLOCKWISE (when viewed from above)
+             * Torso turns from right to left during swing
+             * ALWAYS uses ONE hand on racket
+             * Right shoulder moves forward through contact
+             * Swing path goes from player's right side to left side
+           
+           - BACKHAND:
+             * Body rotates CLOCKWISE (when viewed from above)  
+             * Torso turns from left to right during swing
+             * USUALLY uses TWO hands on racket (but can be one-handed)
+             * Left shoulder moves forward through contact
+             * Swing path goes from player's left side to right side
+        
+        4. Identify the ORIGINAL frame index for each key moment:
            - Preparation stance
            - Peak of backswing
            - Ball contact
            - Maximum follow-through
            - Recovery position
 
+        Important: All frame numbers in your response should refer to the ORIGINAL 30-frame sequence (0-29), not the sampled frames.
+
         Return ONLY JSON (no prose, no markdown fences):
         {
             "is_valid_swing": boolean,
-            "swing_type": "forehand" | "backhand" | "serve" | "unknown",
+            "swing_type": "forehand" | "backhand" | "unknown",
             "start_frame": number,
             "end_frame": number,
             "confidence": number,
@@ -217,6 +285,30 @@ public final class GeminiValidator {
     }
 
     private func makeAnalysisPrompt(swing: ValidatedSwing, metrics: SegmentMetrics) -> String {
+        let swingSpecificContext: String
+        switch swing.type {
+        case .forehand:
+            swingSpecificContext = """
+            
+            FOREHAND-SPECIFIC Analysis Focus:
+            - Unit turn and shoulder rotation during preparation
+            - Contact point position relative to front hip
+            - Racket lag and acceleration through contact
+            - Follow-through extension and finish position
+            """
+        case .backhand:
+            swingSpecificContext = """
+            
+            BACKHAND-SPECIFIC Analysis Focus:
+            - Shoulder turn and non-dominant hand positioning (if two-handed)
+            - Contact point slightly in front of body
+            - Hip rotation and weight transfer
+            - Follow-through extension and balance
+            """
+        default:
+            swingSpecificContext = ""
+        }
+        
         return """
         Analyze this \(swing.type.rawValue) tennis swing.
 
@@ -224,7 +316,7 @@ public final class GeminiValidator {
         - Peak angular velocity: \(String(format: "%.2f", metrics.peakAngularVelocity)) rad/s
         - Peak linear velocity: \(String(format: "%.2f", metrics.peakLinearVelocity)) m/s
         - Contact point: X=\(metrics.contactPoint.x), Y=\(metrics.contactPoint.y)
-        - Shoulder rotation: \(String(format: "%.1f", metrics.backswingAngle))°
+        - Shoulder rotation: \(String(format: "%.1f", metrics.backswingAngle))°\(swingSpecificContext)
 
         You're seeing 5 key moments:
         1. Preparation stance
@@ -234,8 +326,8 @@ public final class GeminiValidator {
         5. Recovery position
 
         Provide concise coaching feedback like a friendly tennis coach:
-        - Exactly 2 specific strengths
-        - Exactly 2 specific improvements (most important first)
+        - Exactly 2 specific strengths relevant to this \(swing.type.rawValue)
+        - Exactly 2 specific improvements (most important first) for this \(swing.type.rawValue)
         - Overall form score (0-10)
         Keep each bullet as ONE short sentence (<= 120 characters). Be specific and actionable. Avoid filler words.
 
@@ -379,7 +471,6 @@ public final class GeminiValidator {
         let lower = raw.lowercased()
         if lower.contains("forehand") { return .forehand }
         if lower.contains("backhand") { return .backhand }
-        if lower.contains("serve") { return .serve }
         return ShotType(rawValue: lower) ?? .unknown
     }
 
