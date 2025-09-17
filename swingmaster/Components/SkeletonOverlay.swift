@@ -24,21 +24,22 @@ struct SkeletonOverlay: View {
                     guard let pa = pose.joints[a], let pb = pose.joints[b] else { continue }
                     let ca = pose.confidences[a] ?? 0
                     let cb = pose.confidences[b] ?? 0
-                    let color = Self.color(for: min(ca, cb))
+                    let minConf = min(ca, cb)
+                    let color = Self.color(for: minConf).opacity(0.7 + Double(minConf) * 0.3)
                     let p1 = Self.convert(point: pa, in: size)
                     let p2 = Self.convert(point: pb, in: size)
                     var path = Path()
                     path.move(to: p1)
                     path.addLine(to: p2)
-                    context.stroke(path, with: .color(color), lineWidth: 3)
+                    context.stroke(path, with: .color(color), lineWidth: 4)
                 }
 
                 // Draw joints
                 for (name, p) in pose.joints {
                     let conf = pose.confidences[name] ?? 0
-                    let color = Self.color(for: conf)
+                    let color = Self.color(for: conf).opacity(0.7 + Double(conf) * 0.3)
                     let pt = Self.convert(point: p, in: size)
-                    let dot = Path(ellipseIn: CGRect(x: pt.x - 3, y: pt.y - 3, width: 6, height: 6))
+                    let dot = Path(ellipseIn: CGRect(x: pt.x - 4, y: pt.y - 4, width: 8, height: 8))
                     context.fill(dot, with: .color(color))
                 }
             }
@@ -57,9 +58,9 @@ struct SkeletonOverlay: View {
     }
 
     private static func color(for confidence: Float) -> Color {
-        if confidence > 0.8 { return .green }
-        if confidence > 0.5 { return .yellow }
-        return .red
+        if confidence > 0.8 { return TennisColors.aceGreen }
+        if confidence > 0.5 { return TennisColors.tennisGreen }
+        return TennisColors.tennisYellow
     }
 
     /// Minimal bone set covering arms, torso, legs.
