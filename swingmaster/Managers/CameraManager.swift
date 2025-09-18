@@ -11,6 +11,7 @@ import Foundation
 import AVFoundation
 import Vision
 import ImageIO
+import UIKit
 
 /// CameraManager is responsible for:
 /// - Requesting camera & microphone permissions
@@ -261,9 +262,8 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let timestamp = CMTimeGetSeconds(pts)
         
-        // Get the proper orientation for Vision framework
-        // For back camera in portrait mode, we typically need .right
-        let orientation: CGImagePropertyOrientation = .right
+        // Map device orientation to Vision orientation (back camera)
+        let orientation: CGImagePropertyOrientation = visionOrientation(from: UIDevice.current.orientation, isFront: false)
 
         Task { [weak self] in
             guard let self = self else { return }
@@ -316,6 +316,17 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
             fpsWindowCount = 0
             DispatchQueue.main.async { self.processedFPS = fps }
         }
+    }
+}
+
+// MARK: - Orientation helper
+func visionOrientation(from device: UIDeviceOrientation, isFront: Bool) -> CGImagePropertyOrientation {
+    switch device {
+    case .portrait:           return isFront ? .leftMirrored  : .right
+    case .portraitUpsideDown: return isFront ? .rightMirrored : .left
+    case .landscapeLeft:      return isFront ? .downMirrored  : .up
+    case .landscapeRight:     return isFront ? .upMirrored    : .down
+    default:                  return isFront ? .leftMirrored  : .right
     }
 }
 

@@ -35,18 +35,17 @@ public final class VideoProcessor: ObservableObject {
     }
 
     private func processVideoWithObjects(_ url: URL) async -> ([PoseFrame], [ObjectDetectionFrame]) {
-        // This is a simplified implementation - in a complete version, we would
-        // need to extract frames from the video and process them for both poses and objects
-        // For now, we'll focus on updating the pipeline structure
+        // Extract poses at ~10 fps; Vision will rescale internally (centerCrop)
         let poseFrames = await poseProcessor.processVideoFile(url, targetFPS: 10.0) { [weak self] p in
             Task { @MainActor in self?.state = .extractingPoses(progress: p) }
         }
-        
-        // Create empty object frames for now - full implementation would process video frames
+
+        // TODO: Implement object detection on video frames similar to live path.
+        // For now, return empty objects aligned with pose frames timing.
         let objectFrames: [ObjectDetectionFrame] = poseFrames.map { frame in
             ObjectDetectionFrame(timestamp: frame.timestamp, racket: nil, ball: nil)
         }
-        
+
         return (poseFrames, objectFrames)
     }
 

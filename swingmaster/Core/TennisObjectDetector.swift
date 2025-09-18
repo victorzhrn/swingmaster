@@ -10,6 +10,7 @@ import Vision
 import CoreML
 import CoreVideo
 import ImageIO
+import UIKit
 
 class TennisObjectDetector {
     private var detectionRequest: VNCoreMLRequest?
@@ -36,36 +37,23 @@ class TennisObjectDetector {
             return
         }
         
-        // Try both compiled and uncompiled model extensions
-        let modelNames = [
-            ("YOLOv3 FP16", "mlmodelc"),
-            ("YOLOv3 FP16", "mlmodel"),
-            ("YOLOv3_FP16", "mlmodelc"),
-            ("YOLOv3_FP16", "mlmodel")
-        ]
-        
-        var modelURL: URL?
-        for (name, ext) in modelNames {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                modelURL = url
-                break
-            }
-        }
-        
-        guard let finalURL = modelURL else {
-            print("Failed to find YOLO model in bundle")
+        // Load compiled YOLO11 model from bundle
+        guard let modelURL = Bundle.main.url(forResource: "yolo11l", withExtension: "mlmodelc") else {
+            print("Failed to find YOLO11 model (yolo11l.mlmodelc) in bundle")
             return
         }
         
         do {
-            let mlModel = try MLModel(contentsOf: finalURL)
+            var config = MLModelConfiguration()
+            config.computeUnits = .all
+            let mlModel = try MLModel(contentsOf: modelURL, configuration: config)
             let model = try VNCoreMLModel(for: mlModel)
-            detectionRequest = VNCoreMLRequest(model: model)
-            // Use centerCrop to match the preview layer's resizeAspectFill behavior
-            detectionRequest?.imageCropAndScaleOption = .centerCrop
-            print("YOLO model loaded successfully from: \(finalURL.lastPathComponent)")
+            let request = VNCoreMLRequest(model: model)
+            request.imageCropAndScaleOption = .centerCrop
+            self.detectionRequest = request
+            print("YOLO11 model loaded successfully: yolo11l.mlmodelc")
         } catch {
-            print("Failed to load YOLO model: \(error)")
+            print("Failed to load YOLO11 model: \(error)")
         }
     }
     
