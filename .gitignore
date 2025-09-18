@@ -114,3 +114,9 @@ GoogleService-Info.plist
 .cursor/**
 
 **/*.mlmodel
+**/*.mlpackage
+**/*.mlmodelc
+
+# YOLO weights and virtual environments
+yolo/*.pt
+yolo/.venv*/
