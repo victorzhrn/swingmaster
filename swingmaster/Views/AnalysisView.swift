@@ -8,6 +8,7 @@
 
 import SwiftUI
 import AVFoundation
+import os
 
 struct AnalysisView: View {
     let videoURL: URL?
@@ -20,6 +21,7 @@ struct AnalysisView: View {
     @State private var isPlaying: Bool = false
     @State private var playingSegment: Shot? = nil
     @Environment(\.colorScheme) private var colorScheme
+    private let logger = Logger(subsystem: "com.swingmaster", category: "AnalysisView")
 
     var body: some View {
         ScrollView {
@@ -357,6 +359,7 @@ struct AnalysisView: View {
     }
 
     private func playSegment(_ shot: Shot) {
+        logger.log("[UI] playSegment id=\(shot.id.uuidString, privacy: .public) start=\(shot.startTime, privacy: .public) end=\(shot.endTime, privacy: .public) duration=\(shot.duration, format: .fixed(precision: 3))")
         playingSegment = shot
         currentTime = shot.startTime
         isPlaying = true
@@ -364,6 +367,7 @@ struct AnalysisView: View {
     
     private func replaySegment() {
         if let segment = playingSegment {
+            logger.log("[UI] replaySegment start=\(segment.startTime, privacy: .public) end=\(segment.endTime, privacy: .public)")
             currentTime = segment.startTime
             isPlaying = true
         } else if let id = selectedShotID, let shot = shots.first(where: { $0.id == id }) {

@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import os
 
 @MainActor
 final class ProcessingManager: ObservableObject {
@@ -25,6 +26,7 @@ final class ProcessingManager: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     @Published var scrollToSession: UUID?
+    private let logger = Logger(subsystem: "com.swingmaster", category: "ProcessingManager")
     
     private init() {}
     
@@ -93,7 +95,7 @@ final class ProcessingManager: ObservableObject {
             let duration = VideoStorage.getDurationSeconds(for: session.videoURL)
             let shots = results.map { res in
                 let t = (res.segment.startTime + res.segment.endTime) / 2.0
-                return Shot(
+                let shot = Shot(
                     id: res.id,
                     time: t,
                     type: res.swingType,
@@ -107,6 +109,8 @@ final class ProcessingManager: ObservableObject {
                     validatedSwing: res.validatedSwing,  // Pass along for on-demand analysis
                     segmentMetrics: res.segmentMetrics  // Pass along for on-demand analysis
                 )
+                self.logger.log("[Save] Shot type=\(shot.type.rawValue, privacy: .public) startTS=\(shot.startTime, privacy: .public) endTS=\(shot.endTime, privacy: .public) duration=\(shot.duration, format: .fixed(precision: 3))")
+                return shot
             }
             AnalysisStore.save(videoURL: session.videoURL, duration: duration, shots: shots)
             sessionStore.updateSession(session.id) { session in

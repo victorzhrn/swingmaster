@@ -42,7 +42,7 @@ public final class GeminiValidator {
     // MARK: - Swing Validation (8 sampled frames from 30)
 
     public func validateSwing(_ potential: PotentialSwing) async throws -> ValidatedSwing? {
-        // Sample approximately 8 frames from the 30 frames
+        // Sample approximately 8 frames from the candidate sequence (dynamic length)
         // Weight sampling toward the peak for better accuracy
         let sampledFrames = sampleFramesForValidation(potential.frames, peakIndex: potential.peakFrameIndex, targetCount: 8)
         let images = try await prepareImages(from: sampledFrames.map { $0.frame })
@@ -233,13 +233,13 @@ public final class GeminiValidator {
         }.joined(separator: ", ")
         
         return """
-        Analyze these \(sampledFrameIndices.count) sampled frames from a 30-frame sequence showing a potential tennis swing.
+        Analyze these \(sampledFrameIndices.count) sampled frames from a sequence of \(potential.frames.count) frames showing a potential tennis swing.
         These frames are sampled from the original sequence at indices: \(sampledFrameIndices.map(String.init).joined(separator: ", "))
         The peak motion occurs at original frame \(potential.peakFrameIndex).
 
         Tasks:
         1. Confirm if this is a valid tennis swing
-        2. Identify exact start/end frames (use ORIGINAL frame numbers 0-29)
+        2. Identify exact start/end frames (use ORIGINAL frame numbers from 0 to \(potential.frames.count - 1))
         3. Classify swing type by observing body rotation and hand grip (assume right-handed player):
            
            FOREHAND vs BACKHAND Detection:
@@ -264,7 +264,7 @@ public final class GeminiValidator {
            - Maximum follow-through
            - Recovery position
 
-        Important: All frame numbers in your response should refer to the ORIGINAL 30-frame sequence (0-29), not the sampled frames.
+        Important: All frame numbers in your response should refer to the ORIGINAL sequence of \(potential.frames.count) frames (0..\(potential.frames.count - 1)), not the sampled frames.
 
         Return ONLY JSON (no prose, no markdown fences):
         {

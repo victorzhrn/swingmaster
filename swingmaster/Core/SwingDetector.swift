@@ -20,18 +20,15 @@ public final class SwingDetector {
     private let minPeakSeparationSeconds: TimeInterval
     private let beforePeakSeconds: TimeInterval
     private let afterPeakSeconds: TimeInterval
-    private let assumedFPS: Int
 
     public init(peakThreshold: Float = 3.0,
                 minPeakSeparationSeconds: TimeInterval = 1.0,
-                beforePeakSeconds: TimeInterval = 0.7,
-                afterPeakSeconds: TimeInterval = 0.3,
-                assumedFPS: Int = 30) {
+                beforePeakSeconds: TimeInterval = 0.8,
+                afterPeakSeconds: TimeInterval = 1.2) {
         self.peakThreshold = peakThreshold
         self.minPeakSeparationSeconds = minPeakSeparationSeconds
         self.beforePeakSeconds = beforePeakSeconds
         self.afterPeakSeconds = afterPeakSeconds
-        self.assumedFPS = max(1, assumedFPS)
     }
 
     /// Returns potential swings given frames and their precomputed metrics.
@@ -72,14 +69,29 @@ public final class SwingDetector {
     private func extractSegment(peakIndex: Int,
                                 frames: [PoseFrame],
                                 metrics: FrameMetrics) -> PotentialSwing? {
-        let framesBefore = Int(beforePeakSeconds * Double(assumedFPS))
-        let framesAfter = Int(afterPeakSeconds * Double(assumedFPS))
-        let startIndex = max(0, peakIndex - framesBefore)
-        let endIndex = min(frames.count - 1, peakIndex + framesAfter)
-        guard endIndex > startIndex, (endIndex - startIndex) >= 20 else { return nil }
+        guard !frames.isEmpty, peakIndex >= 0, peakIndex < frames.count else { return nil }
+        let peakTime = frames[peakIndex].timestamp
+        let targetStartTime = max(0, peakTime - beforePeakSeconds)
+        let targetEndTime = peakTime + afterPeakSeconds
+
+        // Find nearest indices to target times using timestamps (FPS-agnostic)
+        var startIndex = peakIndex
+        while startIndex > 0 && frames[startIndex].timestamp > targetStartTime { startIndex -= 1 }
+        var endIndex = peakIndex
+        while endIndex < frames.count - 1 && frames[endIndex].timestamp < targetEndTime { endIndex += 1 }
+
+        // Ensure minimum span of ~20 frames to keep enough context
+        if endIndex - startIndex < 20 {
+            let deficit = 20 - (endIndex - startIndex)
+            let growLeft = deficit / 2
+            let growRight = deficit - growLeft
+            startIndex = max(0, startIndex - growLeft)
+            endIndex = min(frames.count - 1, endIndex + growRight)
+        }
+        guard endIndex > startIndex else { return nil }
 
         let subframes = Array(frames[startIndex...endIndex])
-        let localPeakIndex = peakIndex - startIndex
+        let localPeakIndex = max(0, min(peakIndex - startIndex, subframes.count - 1))
         let peakVelocity = metrics.angularVelocities[peakIndex]
         let ts = frames[peakIndex].timestamp
         return PotentialSwing(frames: subframes,

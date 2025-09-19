@@ -70,7 +70,11 @@ public final class VideoProcessor: ObservableObject {
         let potentialSwings = swingDetector.detectPotentialSwings(frames: poseFrames, metrics: metrics)
         logger.log("[File] Detected \(potentialSwings.count) potential swing(s)")
         for (idx, c) in potentialSwings.enumerated() {
-            logger.log("[File] Candidate #\(idx + 1) frames=\(c.frames.count) peakVelocity=\(c.peakVelocity, format: .fixed(precision: 3)) ts=\(c.timestamp, privacy: .public)")
+            let startTS = c.frames.first?.timestamp ?? 0
+            let endTS = c.frames.last?.timestamp ?? 0
+            let duration = max(0, endTS - startTS)
+            let estFPS: Double = duration > 0 ? Double(c.frames.count) / duration : 0
+            logger.log("[File] Candidate #\(idx + 1) frames=\(c.frames.count) peakVelocity=\(c.peakVelocity, format: .fixed(precision: 3)) ts=\(c.timestamp, privacy: .public) startTS=\(startTS, privacy: .public) endTS=\(endTS, privacy: .public) duration=\(duration, format: .fixed(precision: 3))s estFPS=\(estFPS, format: .fixed(precision: 1))")
         }
 
         // 4) Validate each swing
@@ -109,7 +113,11 @@ public final class VideoProcessor: ObservableObject {
                 segmentMetrics: segmentMetrics  // Store for on-demand analysis
             )
             results.append(result)
-            logger.log("[File] Created result #\(results.count) type=\(result.swingType.rawValue, privacy: .public) score=\(result.score, format: .fixed(precision: 2))")
+            let s = result.segment.startTime
+            let e = result.segment.endTime
+            let d = max(0, e - s)
+            let center = (s + e) / 2.0
+            logger.log("[File] Result #\(results.count) type=\(result.swingType.rawValue, privacy: .public) startTS=\(s, privacy: .public) endTS=\(e, privacy: .public) duration=\(d, format: .fixed(precision: 3))s centerTS=\(center, privacy: .public)")
         }
 
         self.state = .complete
@@ -160,7 +168,11 @@ public final class VideoProcessor: ObservableObject {
                 segmentMetrics: segmentMetrics  // Store for on-demand analysis
             )
             results.append(result)
-            logger.log("[Live] Created result #\(results.count) type=\(result.swingType.rawValue, privacy: .public) score=\(result.score, format: .fixed(precision: 2))")
+            let s = result.segment.startTime
+            let e = result.segment.endTime
+            let d = max(0, e - s)
+            let center = (s + e) / 2.0
+            logger.log("[Live] Result #\(results.count) type=\(result.swingType.rawValue, privacy: .public) startTS=\(s, privacy: .public) endTS=\(e, privacy: .public) duration=\(d, format: .fixed(precision: 3))s centerTS=\(center, privacy: .public)")
         }
 
         self.state = .complete
