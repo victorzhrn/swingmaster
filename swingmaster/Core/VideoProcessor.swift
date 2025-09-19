@@ -25,7 +25,6 @@ public final class VideoProcessor: ObservableObject {
         case calculatingMetrics
         case detectingSwings
         case validatingSwings(current: Int, total: Int)
-        case analyzingSwings(current: Int, total: Int)
         case complete
     }
 
@@ -89,19 +88,28 @@ public final class VideoProcessor: ObservableObject {
             }
         }
 
-        // 5) Analyze validated swings
+        // 5) Create minimal results without AI analysis
         var results: [AnalysisResult] = []
-        if !validated.isEmpty {
-            for (idx, swing) in validated.enumerated() {
-                self.state = .analyzingSwings(current: idx + 1, total: validated.count)
-                let segmentMetrics = metricsCalculator.calculateSegmentMetrics(for: swing.frames)
-                if let analysis = try? await geminiValidator.analyzeSwing(swing, metrics: segmentMetrics) {
-                    results.append(analysis)
-                    logger.log("[File] Analysis #\(idx + 1) score=\(analysis.score, format: .fixed(precision: 2)) strengths=\(analysis.strengths.count) improvements=\(analysis.improvements.count)")
-                } else {
-                    logger.warning("[File] Analysis failed for validated swing #\(idx + 1)")
-                }
-            }
+        for swing in validated {
+            let segmentMetrics = metricsCalculator.calculateSegmentMetrics(for: swing.frames)
+            
+            // Create minimal AnalysisResult without AI feedback
+            let result = AnalysisResult(
+                segment: SwingSegment(
+                    startTime: swing.frames.first?.timestamp ?? 0,
+                    endTime: swing.frames.last?.timestamp ?? 0,
+                    frames: swing.frames
+                ),
+                swingType: swing.type,
+                score: 0,  // Will be set when AI analysis is performed
+                strengths: [],      // Empty for now
+                improvements: [],   // Empty for now
+                keyFrames: [],      // Can populate from swing.keyFrameIndices if needed
+                validatedSwing: swing,  // Store for on-demand analysis
+                segmentMetrics: segmentMetrics  // Store for on-demand analysis
+            )
+            results.append(result)
+            logger.log("[File] Created result #\(results.count) type=\(result.swingType.rawValue, privacy: .public) score=\(result.score, format: .fixed(precision: 2))")
         }
 
         self.state = .complete
@@ -133,15 +141,26 @@ public final class VideoProcessor: ObservableObject {
         }
 
         var results: [AnalysisResult] = []
-        for (idx, swing) in validated.enumerated() {
-            self.state = .analyzingSwings(current: idx + 1, total: validated.count)
+        for swing in validated {
             let segmentMetrics = metricsCalculator.calculateSegmentMetrics(for: swing.frames)
-            if let analysis = try? await geminiValidator.analyzeSwing(swing, metrics: segmentMetrics) {
-                results.append(analysis)
-                logger.log("[Live] Analysis #\(idx + 1) score=\(analysis.score, format: .fixed(precision: 2)) strengths=\(analysis.strengths.count) improvements=\(analysis.improvements.count)")
-            } else {
-                logger.warning("[Live] Analysis failed for validated swing #\(idx + 1)")
-            }
+            
+            // Create minimal AnalysisResult without AI feedback
+            let result = AnalysisResult(
+                segment: SwingSegment(
+                    startTime: swing.frames.first?.timestamp ?? 0,
+                    endTime: swing.frames.last?.timestamp ?? 0,
+                    frames: swing.frames
+                ),
+                swingType: swing.type,
+                score: 0,  // Will be set when AI analysis is performed
+                strengths: [],      // Empty for now
+                improvements: [],   // Empty for now
+                keyFrames: [],      // Can populate from swing.keyFrameIndices if needed
+                validatedSwing: swing,  // Store for on-demand analysis
+                segmentMetrics: segmentMetrics  // Store for on-demand analysis
+            )
+            results.append(result)
+            logger.log("[Live] Created result #\(results.count) type=\(result.swingType.rawValue, privacy: .public) score=\(result.score, format: .fixed(precision: 2))")
         }
 
         self.state = .complete
@@ -199,6 +218,7 @@ public final class VideoProcessor: ObservableObject {
         logger.log("[File] Video FPS detected: \(fps, format: .fixed(precision: 1))")
         return fps > 0 ? fps : nil
     }
+    
 }
 
 

@@ -80,48 +80,41 @@ final class ProcessingManager: ObservableObject {
             }
             .store(in: &cancellables)
         
-        do {
-            let results = await processor.processVideo(videoURL)
-            
-            await MainActor.run {
-                sessionStore.updateSession(session.id) { session in
-                    session.processingStatus = .complete
-                    session.lastError = nil
-                }
-                activeProcessors[session.id] = nil
-                
-                // Save results using AnalysisStore
-                let duration = VideoStorage.getDurationSeconds(for: session.videoURL)
-                let shots = results.map { res in
-                    let t = (res.segment.startTime + res.segment.endTime) / 2.0
-                    let score = max(0, min(10, res.score))
-                    return Shot(
-                        id: res.id,
-                        time: t,
-                        type: res.swingType,
-                        score: score,
-                        issue: res.improvements.first ?? "",
-                        startTime: res.segment.startTime,
-                        endTime: res.segment.endTime,
-                        strengths: res.strengths,
-                        improvements: res.improvements
-                    )
-                }
-                AnalysisStore.save(videoURL: session.videoURL, duration: duration, shots: shots)
-                sessionStore.updateSession(session.id) { session in
-                    session.shotCount = shots.count
-                }
+        let results = await processor.processVideo(videoURL)
+        
+        await MainActor.run {
+            sessionStore.updateSession(session.id) { session in
+                session.processingStatus = .complete
+                session.lastError = nil
             }
-        } catch {
-            await MainActor.run {
-                sessionStore.updateSession(session.id) { session in
-                    session.processingStatus = .failed(error: error.localizedDescription)
-                    session.lastError = error.localizedDescription
-                }
-                activeProcessors[session.id] = nil
+            activeProcessors[session.id] = nil
+            
+            // Save results using AnalysisStore
+            let duration = VideoStorage.getDurationSeconds(for: session.videoURL)
+            let shots = results.map { res in
+                let t = (res.segment.startTime + res.segment.endTime) / 2.0
+                return Shot(
+                    id: res.id,
+                    time: t,
+                    type: res.swingType,
+                    score: 0,  // Score will be set when AI analysis is performed
+                    issue: "",  // No issue until AI analysis
+                    startTime: res.segment.startTime,
+                    endTime: res.segment.endTime,
+                    strengths: [],  // Empty until AI analysis
+                    improvements: [],  // Empty until AI analysis
+                    hasAIAnalysis: false,  // No AI analysis done yet
+                    validatedSwing: res.validatedSwing,  // Pass along for on-demand analysis
+                    segmentMetrics: res.segmentMetrics  // Pass along for on-demand analysis
+                )
+            }
+            AnalysisStore.save(videoURL: session.videoURL, duration: duration, shots: shots)
+            sessionStore.updateSession(session.id) { session in
+                session.shotCount = shots.count
             }
         }
     }
+    
     
     private func processNextInQueue(sessionStore: SessionStore) {
         guard !pendingQueue.isEmpty,
@@ -143,8 +136,6 @@ final class ProcessingManager: ObservableObject {
             return .detectingSwings
         case .validatingSwings(let current, let total):
             return .validatingSwings(current: current, total: total)
-        case .analyzingSwings(let current, let total):
-            return .analyzingSwings(current: current, total: total)
         case .complete:
             return .complete
         }

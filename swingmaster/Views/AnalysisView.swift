@@ -12,8 +12,9 @@ import AVFoundation
 struct AnalysisView: View {
     let videoURL: URL?
     let duration: Double
-    let shots: [Shot]
+    @State var shots: [Shot]  // Changed from let to @State for updates
 
+    @StateObject private var aiService = AIAnalysisService()
     @State private var selectedShotID: Shot.ID?
     @State private var currentTime: Double = 0
     @State private var isPlaying: Bool = false
@@ -228,48 +229,9 @@ struct AnalysisView: View {
                 }
                 .padding(.bottom, 4)
                 
-                // Strengths
-                if let strengths = selected?.strengths, !strengths.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("What you did well", systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(TennisColors.aceGreen)
-                        ForEach(strengths, id: \.self) { s in
-                            HStack(alignment: .top, spacing: 8) {
-                                Circle()
-                                    .fill(TennisColors.aceGreen)
-                                    .frame(width: 4, height: 4)
-                                    .offset(y: 6)
-                                Text(s)
-                                    .font(.system(size: 15, weight: .regular))
-                                    .foregroundColor(Color.primary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
-                }
-                
-                Divider().background((colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)))
-                
-                // Improvements
-                if let improvements = selected?.improvements, !improvements.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Focus on improving", systemImage: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(colorScheme == .dark ? TennisColors.tennisYellow : TennisColors.clayOrange)
-                        ForEach(Array(improvements.enumerated()), id: \.offset) { index, text in
-                            HStack(alignment: .top, spacing: 8) {
-                                Circle()
-                                    .fill(index == 0 ? (colorScheme == .dark ? TennisColors.tennisYellow : TennisColors.clayOrange) : (colorScheme == .dark ? TennisColors.tennisYellow.opacity(0.6) : TennisColors.clayOrange.opacity(0.6)))
-                                    .frame(width: 4, height: 4)
-                                    .offset(y: 6)
-                                Text(text)
-                                    .font(.system(size: 15, weight: index == 0 ? .medium : .regular))
-                                    .foregroundColor(Color.primary.opacity(index == 0 ? 1 : 0.95))
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
+                // AI Analysis Section
+                if let selected = selected {
+                    aiAnalysisSection(for: selected)
                 }
             }
             .padding(16)
@@ -280,6 +242,111 @@ struct AnalysisView: View {
         if score >= 7.5 { return .shotExcellent }
         if score >= 5.5 { return .shotGood }
         return .shotNeedsWork
+    }
+    
+    // NEW: AI Analysis Section
+    @ViewBuilder
+    private func aiAnalysisSection(for shot: Shot) -> some View {
+        let isAnalyzing = aiService.isAnalyzing && aiService.currentAnalysisID == shot.id
+        
+        Group {
+            if shot.hasAIAnalysis {
+                // Show existing analysis
+                VStack(alignment: .leading, spacing: 12) {
+                    if !shot.strengths.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Strengths", systemImage: "checkmark.circle.fill")
+                                .font(.caption.bold())
+                                .foregroundColor(.green)
+                            
+                            ForEach(shot.strengths, id: \.self) { strength in
+                                HStack(alignment: .top) {
+                                    Circle().fill(Color.green).frame(width: 4, height: 4).offset(y: 6)
+                                    Text(strength).font(.body)
+                                }
+                            }
+                        }
+                    }
+                    
+                    if !shot.improvements.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Areas to Improve", systemImage: "arrow.triangle.2.circlepath")
+                                .font(.caption.bold())
+                                .foregroundColor(.orange)
+                            
+                            ForEach(shot.improvements, id: \.self) { improvement in
+                                HStack(alignment: .top) {
+                                    Circle().fill(Color.orange).frame(width: 4, height: 4).offset(y: 6)
+                                    Text(improvement).font(.body)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+            } else if isAnalyzing {
+                // Loading state
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Analyzing your swing...")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                
+            } else {
+                // CTA Button
+                Button(action: { Task { await generateAnalysis(for: shot) } }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.title3)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Get AI Coaching")
+                                .font(.headline)
+                            Text("Personalized feedback for this shot")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(TennisColors.tennisYellow)
+                    }
+                    .foregroundColor(.primary)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(TennisColors.tennisGreen.opacity(0.15))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(TennisColors.tennisGreen, lineWidth: 2)
+                            )
+                    )
+                }
+            }
+        }
+    }
+    
+    // NEW: Generate Analysis
+    private func generateAnalysis(for shot: Shot) async {
+        guard let videoFileName = videoURL?.lastPathComponent else { return }
+        
+        if let result = await aiService.analyzeShot(shot, 
+                                                     videoFileName: videoFileName,
+                                                     validatedSwing: shot.validatedSwing,
+                                                     segmentMetrics: shot.segmentMetrics) {
+            // Update the shot in our local state
+            if let index = shots.firstIndex(where: { $0.id == shot.id }) {
+                shots[index].strengths = result.strengths
+                shots[index].improvements = result.improvements
+                shots[index].score = result.score
+                shots[index].hasAIAnalysis = true
+            }
+        }
     }
 
     // MARK: - Actions

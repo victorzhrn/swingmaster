@@ -44,8 +44,6 @@ struct VideoProcessingOverlay: View {
             return Double(progress)
         case .validatingSwings(let current, let total):
             return Double(current) / Double(max(1, total))
-        case .analyzingSwings(let current, let total):
-            return Double(current) / Double(max(1, total))
         default:
             return nil
         }

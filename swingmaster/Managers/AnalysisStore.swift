@@ -45,6 +45,34 @@ enum AnalysisStore {
         return cache[fileName]
     }
 
+    /// Update individual shot analysis after AI processing
+    /// - Parameters:
+    ///   - videoFileName: The file name of the video containing the shot
+    ///   - shotID: The UUID of the shot to update
+    ///   - strengths: AI-generated strengths
+    ///   - improvements: AI-generated improvements
+    ///   - score: AI-generated score
+    static func updateShotAnalysis(videoFileName: String, shotID: UUID, strengths: [String], improvements: [String], score: Float) {
+        guard var analysis = cache[videoFileName] else { return }
+        
+        var updatedShots = analysis.shots
+        if let index = updatedShots.firstIndex(where: { $0.id == shotID }) {
+            updatedShots[index].strengths = strengths
+            updatedShots[index].improvements = improvements
+            updatedShots[index].score = score
+            updatedShots[index].hasAIAnalysis = true
+            
+            // Re-save with updated shots
+            let updatedAnalysis = PersistedAnalysis(
+                videoFileName: videoFileName,
+                duration: analysis.duration,
+                shots: updatedShots
+            )
+            cache[videoFileName] = updatedAnalysis
+            persist(cache)
+        }
+    }
+
     /// Remove persisted analysis for a given video URL, if needed.
     static func delete(videoURL: URL) {
         let fileName = videoURL.lastPathComponent

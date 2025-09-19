@@ -14,7 +14,6 @@ extension Session {
         case calculatingMetrics
         case detectingSwings
         case validatingSwings(current: Int, total: Int)
-        case analyzingSwings(current: Int, total: Int)
         case complete
         case failed(error: String)
         
@@ -29,7 +28,7 @@ extension Session {
         
         var canShowPartialResults: Bool {
             switch self {
-            case .validatingSwings, .analyzingSwings, .complete:
+            case .validatingSwings, .complete:
                 return true
             default:
                 return false
@@ -43,7 +42,6 @@ extension Session {
             case .calculatingMetrics: return "Calculating metrics"
             case .detectingSwings: return "Finding swings"
             case .validatingSwings(let c, let t): return "Validating \(c)/\(t)"
-            case .analyzingSwings(let c, let t): return "AI Analysis \(c)/\(t)"
             case .complete: return "Ready"
             case .failed(let error): return "Failed: \(error)"
             }

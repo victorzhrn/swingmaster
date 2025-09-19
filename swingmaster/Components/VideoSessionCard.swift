@@ -19,10 +19,6 @@ struct VideoSessionCard: View {
         analysisData?.shots ?? []
     }
     
-    private var averageScore: Float {
-        guard !shots.isEmpty else { return 0 }
-        return shots.map { $0.score }.reduce(0, +) / Float(shots.count)
-    }
     
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -79,22 +75,10 @@ struct VideoSessionCard: View {
                         Spacer()
                         
                         if !shots.isEmpty {
-                            HStack(spacing: 12) {
-                                // Average score
-                                HStack(spacing: 4) {
-                                    Image(systemName: "star.fill")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(TennisColors.tennisYellow)
-                                    Text(String(format: "%.1f", averageScore))
-                                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                        .tennisMetricStyle()
-                                }
-                                
-                                // Shot count
-                                Text("\(shots.count) shots")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
+                            // Shot count only
+                            Text("\(shots.count) shots")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.secondary)
                         }
                     }
                     .padding(.horizontal, Spacing.cardPadding)

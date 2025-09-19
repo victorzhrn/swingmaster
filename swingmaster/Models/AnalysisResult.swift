@@ -16,6 +16,10 @@ public struct AnalysisResult: Sendable, Identifiable {
     public var strengths: [String]
     public var improvements: [String]
     public var keyFrames: [KeyFrame]
+    
+    // Store these for on-demand AI analysis
+    public var validatedSwing: ValidatedSwing?
+    public var segmentMetrics: SegmentMetrics?
 
     public init(id: UUID = UUID(),
                 segment: SwingSegment,
@@ -23,7 +27,9 @@ public struct AnalysisResult: Sendable, Identifiable {
                 score: Float,
                 strengths: [String],
                 improvements: [String],
-                keyFrames: [KeyFrame]) {
+                keyFrames: [KeyFrame],
+                validatedSwing: ValidatedSwing? = nil,
+                segmentMetrics: SegmentMetrics? = nil) {
         self.id = id
         self.segment = segment
         self.swingType = swingType
@@ -31,6 +37,8 @@ public struct AnalysisResult: Sendable, Identifiable {
         self.strengths = strengths
         self.improvements = improvements
         self.keyFrames = keyFrames
+        self.validatedSwing = validatedSwing
+        self.segmentMetrics = segmentMetrics
     }
 }
 
