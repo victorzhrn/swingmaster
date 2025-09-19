@@ -11,6 +11,7 @@ import CoreML
 import CoreVideo
 import ImageIO
 import UIKit
+import AVFoundation
 
 class TennisObjectDetector {
     private var detectionRequest: VNCoreMLRequest?
@@ -116,5 +117,67 @@ class TennisObjectDetector {
             ballConfidence: ballConfidence,
             timestamp: timestamp
         )
+    }
+
+    // MARK: - File-based detection (on-demand)
+    /// Run object detection on a video file between start and end times.
+    /// Returns an array of ObjectDetectionFrame aligned to frame timestamps.
+    /// This is designed for short segments (e.g., a single shot window).
+    func detectObjects(in url: URL,
+                       start: TimeInterval,
+                       end: TimeInterval,
+                       orientation: CGImagePropertyOrientation = .right,
+                       confidenceThreshold: Float = 0.3) async -> [ObjectDetectionFrame] {
+        var frames: [ObjectDetectionFrame] = []
+
+        let asset = AVAsset(url: url)
+        guard let track = asset.tracks(withMediaType: .video).first else { return [] }
+
+        let startTime = max(0, start)
+        let endTime = min(CMTimeGetSeconds(asset.duration), max(start, end))
+        guard endTime > startTime else { return [] }
+
+        let timeRange = CMTimeRangeFromTimeToTime(
+            start: CMTime(seconds: startTime, preferredTimescale: 600),
+            end: CMTime(seconds: endTime, preferredTimescale: 600)
+        )
+
+        let readerSettings: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+
+        do {
+            let reader = try AVAssetReader(asset: asset)
+            reader.timeRange = timeRange
+
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: readerSettings)
+            output.alwaysCopiesSampleData = false
+            if reader.canAdd(output) { reader.add(output) }
+
+            reader.startReading()
+
+            while reader.status == .reading, let sample = output.copyNextSampleBuffer() {
+                defer { CMSampleBufferInvalidate(sample) }
+                guard let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
+                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                let timestamp = CMTimeGetSeconds(pts)
+
+                if let det = await detectObjects(pixelBuffer, timestamp: timestamp, orientation: orientation) {
+                    let racket: RacketDetection? = (det.racketBox != nil && det.racketConfidence >= confidenceThreshold)
+                        ? RacketDetection(boundingBox: det.racketBox!, confidence: det.racketConfidence, timestamp: timestamp)
+                        : nil
+
+                    let ball: BallDetection? = (det.ballBox != nil && det.ballConfidence >= confidenceThreshold)
+                        ? BallDetection(boundingBox: det.ballBox!, confidence: det.ballConfidence, timestamp: timestamp)
+                        : nil
+
+                    frames.append(ObjectDetectionFrame(timestamp: timestamp, racket: racket, ball: ball))
+                } else {
+                    frames.append(ObjectDetectionFrame(timestamp: timestamp, racket: nil, ball: nil))
+                }
+            }
+        } catch {
+            return frames
+        }
+
+        return frames
     }
 }

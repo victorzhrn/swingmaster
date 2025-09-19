@@ -23,6 +23,14 @@ struct AnalysisView: View {
     @Environment(\.colorScheme) private var colorScheme
     private let logger = Logger(subsystem: "com.swingmaster", category: "AnalysisView")
 
+    // MARK: - Trajectories (on-demand)
+    private let objectDetector = TennisObjectDetector()
+    @State private var enabledTrajectories: Set<TrajectoryType> = [.rightWrist, .racketCenter]
+    @State private var trajectoryOptions: TrajectoryOptions = .default
+    @State private var videoAspectRatio: CGFloat = 16.0/9.0
+    @State private var trajectoryCache: [UUID: [TrajectoryType: [TrajectoryPoint]]] = [:]
+    @State private var objectFramesCache: [UUID: [ObjectDetectionFrame]] = [:]
+
     var body: some View {
         ScrollView {
         VStack(spacing: 12) {
@@ -51,6 +59,28 @@ struct AnalysisView: View {
                             .stroke(Color.white.opacity(0.20), lineWidth: 1)
                     )
                     .shadow(color: colorScheme == .light ? .black.opacity(0.1) : .clear, radius: 10, y: 5)
+                    .overlay(
+                        Group {
+                            if let shot = shots.first(where: { $0.id == selectedShotID }) {
+                                TrajectoryOverlay(
+                                    trajectoriesByType: trajectoryCache[shot.id] ?? [:],
+                                    enabledTrajectories: enabledTrajectories,
+                                    currentTime: currentShotRelativeTime(shot: shot),
+                                    shotDuration: max(0, shot.endTime - shot.startTime),
+                                    videoAspectRatio: videoAspectRatio
+                                )
+                                .allowsHitTesting(false)
+                                .task { await precomputeIfNeeded(for: shot, videoURL: url) }
+                            }
+                        }
+                    )
+                    .overlay(alignment: .topTrailing) {
+                        TrajectorySelector(
+                            enabledTrajectories: $enabledTrajectories,
+                            trajectoryOptions: $trajectoryOptions
+                        )
+                        .padding(12)
+                    }
                     .overlay(alignment: .top) {
                         if let segment = playingSegment {
                             HStack(spacing: 8) {
@@ -121,6 +151,7 @@ struct AnalysisView: View {
         .background(Color(UIColor.systemBackground).ignoresSafeArea())
         .onAppear {
             if selectedShotID == nil, let first = shots.first { selectedShotID = first.id; currentTime = first.time }
+            if let url = videoURL { loadVideoAspectRatio(from: url) }
         }
         .onChange(of: selectedShotID) { _, newID in
             // Auto-play the selected swing segment
@@ -405,6 +436,47 @@ struct AnalysisView: View {
         // Fallback: nearest by absolute time
         let pairs = shots.enumerated().map { ($0.offset, abs($0.element.time - time)) }
         return pairs.min(by: { $0.1 < $1.1 })?.0
+    }
+}
+
+// MARK: - Helpers in AnalysisView scope
+
+extension AnalysisView {
+    fileprivate func precomputeIfNeeded(for shot: Shot, videoURL: URL) async {
+        if objectFramesCache[shot.id] == nil {
+            let pad = 0.5
+            let start = max(0, shot.startTime - pad)
+            let end = shot.endTime + pad
+            let orientation = visionOrientation(from: .portrait, isFront: false)
+            let frames = await objectDetector.detectObjects(in: videoURL, start: start, end: end, orientation: orientation)
+            objectFramesCache[shot.id] = frames
+        }
+        var perType: [TrajectoryType: [TrajectoryPoint]] = trajectoryCache[shot.id] ?? [:]
+        for type in enabledTrajectories {
+            if perType[type] == nil {
+                let poses = shots.first(where: { $0.id == shot.id })?.validatedSwing?.frames ?? []
+                let objects = objectFramesCache[shot.id] ?? []
+                perType[type] = TrajectoryComputer.compute(type: type, poseFrames: poses, objectFrames: objects, startTime: shot.startTime, options: trajectoryOptions)
+            }
+        }
+        trajectoryCache[shot.id] = perType
+    }
+    fileprivate func currentShotRelativeTime(shot: Shot) -> Double {
+        max(0, currentTime - shot.startTime)
+    }
+
+    fileprivate func loadVideoAspectRatio(from url: URL) {
+        Task {
+            let asset = AVAsset(url: url)
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
+            let size = try? await track.load(.naturalSize)
+            let transform = try? await track.load(.preferredTransform)
+            guard let size = size else { return }
+            let transformed = size.applying(transform ?? .identity)
+            let width = abs(transformed.width)
+            let height = abs(transformed.height)
+            await MainActor.run { self.videoAspectRatio = width / height }
+        }
     }
 }
 
