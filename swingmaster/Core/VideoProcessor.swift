@@ -8,6 +8,7 @@
 import Foundation
 import os
 import Vision
+import AVFoundation
 
 @MainActor
 public final class VideoProcessor: ObservableObject {
@@ -35,8 +36,11 @@ public final class VideoProcessor: ObservableObject {
     }
 
     private func processVideoWithObjects(_ url: URL) async -> ([PoseFrame], [ObjectDetectionFrame]) {
-        // Extract poses at ~10 fps; Vision will rescale internally (centerCrop)
-        let poseFrames = await poseProcessor.processVideoFile(url, targetFPS: 10.0) { [weak self] p in
+        // Read the video's native FPS and use it for pose extraction
+        let videoFPS = getVideoFPS(from: url) ?? 10.0
+        logger.log("[File] Using video FPS: \(videoFPS, format: .fixed(precision: 1))")
+        
+        let poseFrames = await poseProcessor.processVideoFile(url, targetFPS: videoFPS) { [weak self] p in
             Task { @MainActor in self?.state = .extractingPoses(progress: p) }
         }
 
@@ -183,6 +187,17 @@ public final class VideoProcessor: ObservableObject {
         var countPresent = 0
         for f in frames { if f.joints[joint] != nil { countPresent += 1 } }
         return Double(countPresent) / Double(frames.count)
+    }
+    
+    private func getVideoFPS(from url: URL) -> Double? {
+        let asset = AVAsset(url: url)
+        guard let videoTrack = asset.tracks(withMediaType: .video).first else {
+            logger.warning("[File] No video track found in file")
+            return nil
+        }
+        let fps = Double(videoTrack.nominalFrameRate)
+        logger.log("[File] Video FPS detected: \(fps, format: .fixed(precision: 1))")
+        return fps > 0 ? fps : nil
     }
 }
 
