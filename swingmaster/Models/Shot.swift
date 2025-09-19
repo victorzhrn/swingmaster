@@ -2,7 +2,7 @@
 //  Shot.swift
 //  swingmaster
 //
-//  Defines shot types and a simple mock shot model to support AnalysisView.
+//  Defines shot types and shot model to support AnalysisView.
 //
 
 import Foundation
@@ -47,8 +47,8 @@ public enum ShotType: String, Codable, CaseIterable, Sendable {
     }
 }
 
-/// Simple model representing a detected or mock shot in a session.
-struct MockShot: Identifiable, Hashable, Codable {
+/// Simple model representing a detected shot in a session.
+struct Shot: Identifiable, Hashable, Codable {
     let id: UUID
     let time: Double  // Center time of the swing (kept for compatibility)
     let startTime: Double  // Start of the swing segment
@@ -81,9 +81,9 @@ struct MockShot: Identifiable, Hashable, Codable {
 
 // MARK: - Sample Data (Previews)
 
-extension Array where Element == MockShot {
+extension Array where Element == Shot {
     /// Generates a deterministic set of sample shots across a duration.
-    static func sampleShots(duration: Double) -> [MockShot] {
+    static func sampleShots(duration: Double) -> [Shot] {
         let times = [duration * 0.18, duration * 0.42, duration * 0.58, duration * 0.76]
         let types: [ShotType] = [.forehand, .backhand, .forehand, .backhand]
         let scores: [Float] = [6.2, 7.1, 6.9, 7.9]
@@ -98,7 +98,7 @@ extension Array where Element == MockShot {
             let swingDuration = [0.9, 1.1, 0.8, 1.2][idx]  // Deterministic for previews
             let start = Swift.max(0, t - swingDuration/2)
             let end = Swift.min(duration, t + swingDuration/2)
-            return MockShot(time: t, type: types[idx], score: scores[idx], issue: issues[idx], 
+            return Shot(time: t, type: types[idx], score: scores[idx], issue: issues[idx], 
                           startTime: start, endTime: end)
         }
     }

@@ -11,21 +11,21 @@ import UIKit
 
 struct TimelineStripEnhanced: View {
     let duration: Double
-    let shots: [MockShot]
-    @Binding var selectedShotID: MockShot.ID?
+    let shots: [Shot]
+    @Binding var selectedShotID: Shot.ID?
     @Binding var currentTime: Double
     @Binding var isPlaying: Bool
     
     /// Callback when user wants to play a specific segment
-    var onPlaySegment: ((MockShot) -> Void)?
+    var onPlaySegment: ((Shot) -> Void)?
     
     /// Optional navigation callbacks for prev/next controls at edges
     var onPrev: (() -> Void)? = nil
     var onNext: (() -> Void)? = nil
     
     /// State for animation
-    @State private var expandedShotID: MockShot.ID?
-    @State private var pulsingMarkerID: MockShot.ID?
+    @State private var expandedShotID: Shot.ID?
+    @State private var pulsingMarkerID: Shot.ID?
     @Namespace private var markerNamespace
     @Environment(\.colorScheme) private var colorScheme
     
@@ -156,7 +156,7 @@ struct TimelineStripEnhanced: View {
     }
     
     @ViewBuilder
-    private func shotMarkerOrSegment(shot: MockShot, width: CGFloat, height: CGFloat) -> some View {
+    private func shotMarkerOrSegment(shot: Shot, width: CGFloat, height: CGFloat) -> some View {
         let isSelected = shot.id == selectedShotID
         let isExpanded = shot.id == expandedShotID
         
@@ -200,7 +200,7 @@ struct TimelineStripEnhanced: View {
     // MARK: - Segment View (Expanded State)
     
     @ViewBuilder
-    private func segmentView(for shot: MockShot, width: CGFloat) -> some View {
+    private func segmentView(for shot: Shot, width: CGFloat) -> some View {
         let startX = xPosition(for: shot.startTime, width: width)
         let endX = xPosition(for: shot.endTime, width: width)
         let segmentWidth = max(44, endX - startX)  // Minimum width for visibility
@@ -256,7 +256,7 @@ struct TimelineStripEnhanced: View {
     // MARK: - Marker View (Default State)
     
     @ViewBuilder
-    private func markerView(for shot: MockShot, selected: Bool) -> some View {
+    private func markerView(for shot: Shot, selected: Bool) -> some View {
         let isPulsing = shot.id == pulsingMarkerID
         let baseSize: CGFloat = selected ? 20 : 12
         
@@ -314,7 +314,7 @@ struct TimelineStripEnhanced: View {
         }
     }
 
-    private func markerColor(for shot: MockShot) -> Color {
+    private func markerColor(for shot: Shot) -> Color {
         // Color-code by shot quality
         if shot.score >= 7.5 { return .shotExcellent }
         if shot.score >= 5.5 { return .shotGood }
@@ -347,16 +347,16 @@ struct TimelineStripEnhanced: View {
         return CGFloat(clamped / duration) * contentWidth + 44
     }
     
-    private func nearestShot(atX x: CGFloat, totalWidth: CGFloat) -> MockShot? {
+    private func nearestShot(atX x: CGFloat, totalWidth: CGFloat) -> Shot? {
         guard !shots.isEmpty else { return nil }
-        let pairs = shots.map { shot -> (MockShot, CGFloat) in
+        let pairs = shots.map { shot -> (Shot, CGFloat) in
             let pos = xPosition(for: shot.time, width: totalWidth)
             return (shot, abs(pos - x))
         }
         return pairs.min(by: { $0.1 < $1.1 })?.0
     }
     
-    private func select(_ shot: MockShot) {
+    private func select(_ shot: Shot) {
         selectedShotID = shot.id
         currentTime = shot.time
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -408,7 +408,7 @@ struct TimelineStripEnhanced: View {
 
 #Preview("Enhanced Timeline") {
     struct PreviewWrapper: View {
-        @State private var shots = Array<MockShot>.sampleShots(duration: 90)
+        @State private var shots = Array<Shot>.sampleShots(duration: 90)
         @State private var selectedID: UUID?
         @State private var currentTime: Double = 0
         @State private var isPlaying: Bool = false

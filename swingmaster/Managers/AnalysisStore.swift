@@ -3,7 +3,7 @@
 //  swingmaster
 //
 //  MVP persistence for per-video analysis results using UserDefaults.
-//  Stores only the data required by AnalysisView: duration and MockShot list.
+//  Stores only the data required by AnalysisView: duration and Shot list.
 //
 
 import Foundation
@@ -13,7 +13,7 @@ import Foundation
 struct PersistedAnalysis: Codable, Equatable {
     let videoFileName: String
     let duration: Double
-    let shots: [MockShot]
+    let shots: [Shot]
 }
 
 /// Lightweight store backed by UserDefaults for MVP.
@@ -29,7 +29,7 @@ enum AnalysisStore {
     ///   - videoURL: The file URL for the analyzed video.
     ///   - duration: The total video duration in seconds.
     ///   - shots: The shots to display in AnalysisView.
-    static func save(videoURL: URL, duration: Double, shots: [MockShot]) {
+    static func save(videoURL: URL, duration: Double, shots: [Shot]) {
         let fileName = videoURL.lastPathComponent
         var all = cache
         all[fileName] = PersistedAnalysis(videoFileName: fileName, duration: duration, shots: shots)

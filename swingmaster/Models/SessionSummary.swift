@@ -11,10 +11,10 @@ struct SessionSummary: Codable {
     let averageScore: Float
     let shotBreakdown: [ShotType: Int]
     let totalShots: Int
-    let bestShot: MockShot?
-    let worstShot: MockShot?
+    let bestShot: Shot?
+    let worstShot: Shot?
     
-    init(from shots: [MockShot]) {
+    init(from shots: [Shot]) {
         self.totalShots = shots.count
         
         // Calculate average score

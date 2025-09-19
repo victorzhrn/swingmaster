@@ -95,7 +95,7 @@ final class ProcessingManager: ObservableObject {
                 let shots = results.map { res in
                     let t = (res.segment.startTime + res.segment.endTime) / 2.0
                     let score = max(0, min(10, res.score))
-                    return MockShot(
+                    return Shot(
                         id: res.id,
                         time: t,
                         type: res.swingType,

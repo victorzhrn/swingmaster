@@ -15,7 +15,7 @@ struct VideoSessionCard: View {
     @EnvironmentObject var processingManager: ProcessingManager
     @EnvironmentObject var sessionStore: SessionStore
     
-    private var shots: [MockShot] {
+    private var shots: [Shot] {
         analysisData?.shots ?? []
     }
     

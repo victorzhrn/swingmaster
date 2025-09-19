@@ -12,12 +12,12 @@ import AVFoundation
 struct AnalysisView: View {
     let videoURL: URL?
     let duration: Double
-    let shots: [MockShot]
+    let shots: [Shot]
 
-    @State private var selectedShotID: MockShot.ID?
+    @State private var selectedShotID: Shot.ID?
     @State private var currentTime: Double = 0
     @State private var isPlaying: Bool = false
-    @State private var playingSegment: MockShot? = nil
+    @State private var playingSegment: Shot? = nil
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -289,7 +289,7 @@ struct AnalysisView: View {
         if !isPlaying { playingSegment = nil }
     }
 
-    private func playSegment(_ shot: MockShot) {
+    private func playSegment(_ shot: Shot) {
         playingSegment = shot
         currentTime = shot.startTime
         isPlaying = true
@@ -338,7 +338,7 @@ struct AnalysisView: View {
 }
 
 #Preview("AnalysisView") {
-    let shots = Array<MockShot>.sampleShots(duration: 92)
+    let shots = Array<Shot>.sampleShots(duration: 92)
     return AnalysisView(videoURL: nil, duration: 92, shots: shots)
 }
 
