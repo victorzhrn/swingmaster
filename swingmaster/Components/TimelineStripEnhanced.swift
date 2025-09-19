@@ -208,10 +208,10 @@ struct TimelineStripEnhanced: View {
         ZStack {
             // Segment bar background
             RoundedRectangle(cornerRadius: 8)
-                .fill(markerColor(for: shot).opacity(0.3))
+                .fill(TennisColors.courtGreen.opacity(0.3))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(markerColor(for: shot), lineWidth: 2)
+                        .stroke(TennisColors.courtGreen, lineWidth: 2)
                 )
                 .frame(width: segmentWidth, height: 24)
             
@@ -222,7 +222,7 @@ struct TimelineStripEnhanced: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(
                             LinearGradient(
-                                colors: [markerColor(for: shot), markerColor(for: shot).opacity(0.7)],
+                                colors: [TennisColors.courtGreen, TennisColors.courtGreen.opacity(0.7)],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -264,14 +264,14 @@ struct TimelineStripEnhanced: View {
             // Pulse animation ring
             if isPulsing {
                 Circle()
-                    .stroke(markerColor(for: shot), lineWidth: 2)
+                    .stroke(TennisColors.courtGreen, lineWidth: 2)
                     .frame(width: baseSize + 20, height: baseSize + 20)
                     .opacity(0)
                     .modifier(PulseAnimation())
             }
             
             Circle()
-                .fill(markerColor(for: shot).opacity(0.9))
+                .fill(TennisColors.courtGreen.opacity(0.9))
                 .frame(width: baseSize, height: baseSize)
                 .overlay(
                     Circle()
@@ -314,12 +314,6 @@ struct TimelineStripEnhanced: View {
         }
     }
 
-    private func markerColor(for shot: Shot) -> Color {
-        // Color-code by shot quality
-        if shot.score >= 7.5 { return .shotExcellent }
-        if shot.score >= 5.5 { return .shotGood }
-        return .shotNeedsWork
-    }
     
     // MARK: - Playhead View
     
