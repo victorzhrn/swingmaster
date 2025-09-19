@@ -78,19 +78,6 @@ public final class GeminiValidator {
                               keyFrameIndices: localKF)
     }
 
-    // MARK: - Swing Analysis (5 key frames + metrics)
-
-    public func analyzeSwing(_ swing: ValidatedSwing,
-                             metrics: SegmentMetrics) async throws -> AnalysisResult {
-        let keyFrames = extractKeyFrames(swing)
-        let images = try await prepareImages(from: keyFrames.map { $0.frame })
-        let prompt = makeAnalysisPrompt(swing: swing, metrics: metrics)
-        logger.log("[Gemini] Analysis frames sent=\(images.count)")
-        logger.log("[Gemini] Analysis prompt head=\(self.firstWords(prompt, count: 10), privacy: .public)")
-        let response = try await callGeminiAPI(images: images, prompt: prompt)
-        logger.log("[Gemini] Analysis response (len=\(response.count)): \(response, privacy: .public)")
-        return parseAnalysisResponse(response, swing: swing, metrics: metrics)
-    }
 
     // MARK: - Frame Sampling
     
@@ -284,63 +271,6 @@ public final class GeminiValidator {
         """
     }
 
-    private func makeAnalysisPrompt(swing: ValidatedSwing, metrics: SegmentMetrics) -> String {
-        let swingSpecificContext: String
-        switch swing.type {
-        case .forehand:
-            swingSpecificContext = """
-            
-            FOREHAND-SPECIFIC Analysis Focus:
-            - Unit turn and shoulder rotation during preparation
-            - Contact point position relative to front hip
-            - Racket lag and acceleration through contact
-            - Follow-through extension and finish position
-            """
-        case .backhand:
-            swingSpecificContext = """
-            
-            BACKHAND-SPECIFIC Analysis Focus:
-            - Shoulder turn and non-dominant hand positioning (if two-handed)
-            - Contact point slightly in front of body
-            - Hip rotation and weight transfer
-            - Follow-through extension and balance
-            """
-        default:
-            swingSpecificContext = ""
-        }
-        
-        return """
-        Analyze this \(swing.type.rawValue) tennis swing.
-
-        Context:
-        - Peak angular velocity: \(String(format: "%.2f", metrics.peakAngularVelocity)) rad/s
-        - Peak linear velocity: \(String(format: "%.2f", metrics.peakLinearVelocity)) m/s
-        - Contact point: X=\(metrics.contactPoint.x), Y=\(metrics.contactPoint.y)
-        - Shoulder rotation: \(String(format: "%.1f", metrics.backswingAngle))°\(swingSpecificContext)
-
-        You're seeing 5 key moments:
-        1. Preparation stance
-        2. Peak backswing
-        3. Ball contact
-        4. Maximum follow-through
-        5. Recovery position
-
-        Provide concise coaching feedback like a friendly tennis coach:
-        - Exactly 2 specific strengths relevant to this \(swing.type.rawValue)
-        - Exactly 2 specific improvements (most important first) for this \(swing.type.rawValue)
-        - Overall form score (0-10)
-        Keep each bullet as ONE short sentence (<= 120 characters). Be specific and actionable. Avoid filler words.
-
-        Be encouraging but honest. Use simple language a recreational player understands.
-
-        Return ONLY JSON (no prose, no markdown fences):
-        {
-            "score": number,
-            "strengths": [string],
-            "improvements": [string]
-        }
-        """
-    }
 
     // Parsing
     private struct ValidationResponse: Decodable {
@@ -373,11 +303,6 @@ public final class GeminiValidator {
         }
     }
 
-    private struct AnalysisResponseV2: Decodable {
-        let score: FlexibleFloat
-        let strengths: [String]
-        let improvements: [String]
-    }
 
     private func parseValidationResponse(_ text: String) -> (isValid: Bool, swingType: ShotType, startFrame: Int, endFrame: Int, confidence: Float, keyFrames: ValidationResponse.KeyFrames)? {
         let cleaned = Self.extractJSON(from: text)
@@ -387,58 +312,6 @@ public final class GeminiValidator {
         return (decoded.is_valid_swing, type, decoded.start_frame, decoded.end_frame, decoded.confidence.value, decoded.key_frames)
     }
 
-    private func parseAnalysisResponse(_ text: String,
-                                       swing: ValidatedSwing,
-                                       metrics: SegmentMetrics) -> AnalysisResult {
-        let cleaned = Self.extractJSON(from: text)
-        if let data = cleaned.data(using: .utf8) {
-            let decoder = JSONDecoder()
-            if let v2 = try? decoder.decode(AnalysisResponseV2.self, from: data) {
-                let startTime = swing.frames.first?.timestamp ?? swing.originalTimestamp
-                let endTime = swing.frames.last?.timestamp ?? swing.originalTimestamp
-                var score = v2.score.value
-                if score > 10.0 { score = score / 10.0 }
-                score = min(max(score, 0.0), 10.0)
-
-                // Build key frame references
-                let k = swing.keyFrameIndices
-                let kfs: [KeyFrame] = extractKeyFrames(swing).map { item in
-                    KeyFrame(type: item.type, frameIndex: item.index, timestamp: item.frame.timestamp)
-                }
-
-                // Post-process to keep content concise
-                let shortStrengths = Self.shorten(items: v2.strengths, maxCount: 2, maxChars: 120)
-                let shortImprovements = Self.shorten(items: v2.improvements, maxCount: 2, maxChars: 120)
-
-                return AnalysisResult(
-                    segment: SwingSegment(startTime: startTime, endTime: endTime, frames: swing.frames),
-                    swingType: swing.type,
-                    score: score,
-                    strengths: shortStrengths,
-                    improvements: shortImprovements,
-                    keyFrames: kfs
-                )
-            } else {
-                do { _ = try decoder.decode(AnalysisResponseV2.self, from: data) } catch {
-                    logger.error("[Gemini] Analysis JSON decode error (v2): \(String(describing: error), privacy: .public)")
-                }
-            }
-        }
-        logger.warning("[Gemini] Analysis parse failed; returning fallback coaching data")
-        let startTime = swing.frames.first?.timestamp ?? swing.originalTimestamp
-        let endTime = swing.frames.last?.timestamp ?? swing.originalTimestamp
-        let fallbackKeyFrames: [KeyFrame] = extractKeyFrames(swing).map { item in
-            KeyFrame(type: item.type, frameIndex: item.index, timestamp: item.frame.timestamp)
-        }
-        return AnalysisResult(
-            segment: SwingSegment(startTime: startTime, endTime: endTime, frames: swing.frames),
-            swingType: swing.type,
-            score: 7.0,
-            strengths: Self.shorten(items: ["Solid balance through contact"], maxCount: 2, maxChars: 120),
-            improvements: Self.shorten(items: ["Make contact slightly earlier"], maxCount: 2, maxChars: 120),
-            keyFrames: fallbackKeyFrames
-        )
-    }
 
     // MARK: - Utils
 

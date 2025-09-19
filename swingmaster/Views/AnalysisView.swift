@@ -15,7 +15,6 @@ struct AnalysisView: View {
     let duration: Double
     @State var shots: [Shot]  // Changed from let to @State for updates
 
-    @StateObject private var aiService = AIAnalysisService()
     @State private var selectedShotID: Shot.ID?
     @State private var currentTime: Double = 0
     @State private var isPlaying: Bool = false
@@ -256,131 +255,93 @@ struct AnalysisView: View {
                     Text(selected?.type.accessibleName ?? "Shot")
                         .font(.system(size: 17, weight: .semibold))
                     Spacer()
-                    Text(String(format: "%.1f", selected?.score ?? 0))
-                        .modifier(TennisTypography.MetricStyle())
-                        .foregroundColor(scoreColor(selected?.score ?? 0))
                 }
                 .padding(.bottom, 4)
                 
-                // AI Analysis Section
-                if let selected = selected {
-                    aiAnalysisSection(for: selected)
+                // Simple Metrics Section
+                if let selected = selected, let metrics = selected.segmentMetrics {
+                    simpleMetricsDisplay(metrics)
                 }
             }
             .padding(16)
         }
     }
 
-    private func scoreColor(_ score: Float) -> Color {
-        if score >= 7.5 { return .shotExcellent }
-        if score >= 5.5 { return .shotGood }
-        return .shotNeedsWork
-    }
     
-    // NEW: AI Analysis Section
+    // MARK: - Simple Metrics Display
+    
     @ViewBuilder
-    private func aiAnalysisSection(for shot: Shot) -> some View {
-        let isAnalyzing = aiService.isAnalyzing && aiService.currentAnalysisID == shot.id
-        
-        Group {
-            if shot.hasAIAnalysis {
-                // Show existing analysis
-                VStack(alignment: .leading, spacing: 12) {
-                    if !shot.strengths.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Strengths", systemImage: "checkmark.circle.fill")
-                                .font(.caption.bold())
-                                .foregroundColor(.green)
-                            
-                            ForEach(shot.strengths, id: \.self) { strength in
-                                HStack(alignment: .top) {
-                                    Circle().fill(Color.green).frame(width: 4, height: 4).offset(y: 6)
-                                    Text(strength).font(.body)
-                                }
-                            }
-                        }
-                    }
-                    
-                    if !shot.improvements.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Areas to Improve", systemImage: "arrow.triangle.2.circlepath")
-                                .font(.caption.bold())
-                                .foregroundColor(.orange)
-                            
-                            ForEach(shot.improvements, id: \.self) { improvement in
-                                HStack(alignment: .top) {
-                                    Circle().fill(Color.orange).frame(width: 4, height: 4).offset(y: 6)
-                                    Text(improvement).font(.body)
-                                }
-                            }
-                        }
-                    }
-                }
-                
-            } else if isAnalyzing {
-                // Loading state
-                HStack {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Analyzing your swing...")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                
-            } else {
-                // CTA Button
-                Button(action: { Task { await generateAnalysis(for: shot) } }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "wand.and.stars")
-                            .font(.title3)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Get AI Coaching")
-                                .font(.headline)
-                            Text("Personalized feedback for this shot")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(TennisColors.tennisYellow)
-                    }
-                    .foregroundColor(.primary)
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(TennisColors.tennisGreen.opacity(0.15))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(TennisColors.tennisGreen, lineWidth: 2)
-                            )
-                    )
-                }
+    private func simpleMetricsDisplay(_ metrics: SegmentMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            
+            // Peak Speed
+            HStack {
+                Image(systemName: "bolt.fill")
+                    .foregroundColor(.orange)
+                    .frame(width: 20)
+                Text("Peak Speed")
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(metrics.peakAngularVelocity)) rad/s")
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+            }
+            
+            // Shoulder Rotation  
+            HStack {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundColor(.blue)
+                    .frame(width: 20)
+                Text("Shoulder Turn")
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(metrics.backswingAngle))°")
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+            }
+            
+            // Contact Point Height
+            HStack {
+                Image(systemName: "target")
+                    .foregroundColor(.green)
+                    .frame(width: 20)
+                Text("Contact Height")
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(metrics.contactPoint.y * 100))%")
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+            }
+            
+            // Follow Through
+            HStack {
+                Image(systemName: "arrow.up.right")
+                    .foregroundColor(.purple)
+                    .frame(width: 20)
+                Text("Follow Through")
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(metrics.followThroughHeight * 100))%")
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+            }
+            
+            // Tracking Quality
+            HStack {
+                Image(systemName: "checkmark.circle")
+                    .foregroundColor(metrics.averageConfidence > 0.7 ? .green : .orange)
+                    .frame(width: 20)
+                Text("Tracking Quality")
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("\(Int(metrics.averageConfidence * 100))%")
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
             }
         }
     }
     
-    // NEW: Generate Analysis
-    private func generateAnalysis(for shot: Shot) async {
-        guard let videoFileName = videoURL?.lastPathComponent else { return }
-        
-        if let result = await aiService.analyzeShot(shot, 
-                                                     videoFileName: videoFileName,
-                                                     validatedSwing: shot.validatedSwing,
-                                                     segmentMetrics: shot.segmentMetrics) {
-            // Update the shot in our local state
-            if let index = shots.firstIndex(where: { $0.id == shot.id }) {
-                shots[index].strengths = result.strengths
-                shots[index].improvements = result.improvements
-                shots[index].score = result.score
-                shots[index].hasAIAnalysis = true
-            }
-        }
-    }
+    
 
     // MARK: - Actions
     

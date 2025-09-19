@@ -105,9 +105,6 @@ public final class VideoProcessor: ObservableObject {
                     frames: swing.frames
                 ),
                 swingType: swing.type,
-                score: 0,  // Will be set when AI analysis is performed
-                strengths: [],      // Empty for now
-                improvements: [],   // Empty for now
                 keyFrames: [],      // Can populate from swing.keyFrameIndices if needed
                 validatedSwing: swing,  // Store for on-demand analysis
                 segmentMetrics: segmentMetrics  // Store for on-demand analysis
@@ -160,9 +157,6 @@ public final class VideoProcessor: ObservableObject {
                     frames: swing.frames
                 ),
                 swingType: swing.type,
-                score: 0,  // Will be set when AI analysis is performed
-                strengths: [],      // Empty for now
-                improvements: [],   // Empty for now
                 keyFrames: [],      // Can populate from swing.keyFrameIndices if needed
                 validatedSwing: swing,  // Store for on-demand analysis
                 segmentMetrics: segmentMetrics  // Store for on-demand analysis

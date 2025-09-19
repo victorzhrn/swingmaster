@@ -288,7 +288,7 @@ struct TimelineStripEnhanced: View {
         .frame(minWidth: minInteractiveRadius * 2, minHeight: minInteractiveRadius * 2)
         .scaleEffect(selected ? 1.2 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selected)
-        .accessibilityLabel("\(shot.type.accessibleName), score \(String(format: "%.1f", shot.score))")
+        .accessibilityLabel("\(shot.type.accessibleName)")
         .accessibilityHint("Double tap to play this segment")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
@@ -357,7 +357,7 @@ struct TimelineStripEnhanced: View {
         
         // Announce selection for VoiceOver
         if UIAccessibility.isVoiceOverRunning {
-            let announcement = "\(shot.type.accessibleName) selected, score \(String(format: "%.1f", shot.score))"
+            let announcement = "\(shot.type.accessibleName) selected"
             UIAccessibility.post(notification: .announcement, argument: announcement)
         }
     }

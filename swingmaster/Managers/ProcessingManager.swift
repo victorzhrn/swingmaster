@@ -99,13 +99,9 @@ final class ProcessingManager: ObservableObject {
                     id: res.id,
                     time: t,
                     type: res.swingType,
-                    score: 0,  // Score will be set when AI analysis is performed
                     issue: "",  // No issue until AI analysis
                     startTime: res.segment.startTime,
                     endTime: res.segment.endTime,
-                    strengths: [],  // Empty until AI analysis
-                    improvements: [],  // Empty until AI analysis
-                    hasAIAnalysis: false,  // No AI analysis done yet
                     validatedSwing: res.validatedSwing,  // Pass along for on-demand analysis
                     segmentMetrics: res.segmentMetrics  // Pass along for on-demand analysis
                 )
