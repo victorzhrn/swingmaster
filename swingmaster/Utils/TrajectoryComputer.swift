@@ -58,6 +58,24 @@ struct TrajectoryPoint: Equatable {
     let timestamp: Double
     let confidence: Float
     let isInterpolated: Bool
+    
+    // Motion quality indicators
+    let velocity: Float?        // Speed in normalized units per second
+    let acceleration: Float?    // Acceleration in normalized units per second²
+    let isPowerSpot: Bool       // True if this is a peak velocity point
+    
+    // Convenience initializer for backward compatibility
+    init(x: Float, y: Float, timestamp: Double, confidence: Float, isInterpolated: Bool,
+         velocity: Float? = nil, acceleration: Float? = nil, isPowerSpot: Bool = false) {
+        self.x = x
+        self.y = y
+        self.timestamp = timestamp
+        self.confidence = confidence
+        self.isInterpolated = isInterpolated
+        self.velocity = velocity
+        self.acceleration = acceleration
+        self.isPowerSpot = isPowerSpot
+    }
 }
 
 enum TrajectoryComputer {
@@ -104,6 +122,10 @@ enum TrajectoryComputer {
                 points = smoothSavitzkyGolay(points, windowSize: options.smoothingWindow, polyOrder: polyOrder)
             }
         }
+        
+        // Calculate motion metrics (velocity, acceleration, power spots)
+        points = calculateMotionMetrics(points)
+        
         return points
     }
 
@@ -144,6 +166,107 @@ enum TrajectoryComputer {
                                    confidence: b.confidence,
                                    isInterpolated: false)
         }
+    }
+
+    // MARK: - Motion Metrics Calculation
+    
+    /// Calculate velocity, acceleration, and identify power spots in the trajectory
+    private static func calculateMotionMetrics(_ points: [TrajectoryPoint]) -> [TrajectoryPoint] {
+        guard points.count > 2 else { return points }
+        
+        var velocities: [Float] = []
+        var accelerations: [Float] = []
+        
+        // Calculate velocities using central differences
+        for i in 0..<points.count {
+            let velocity: Float
+            
+            if i == 0 && points.count > 1 {
+                // Forward difference for first point
+                let dx = points[1].x - points[0].x
+                let dy = points[1].y - points[0].y
+                let dt = Float(points[1].timestamp - points[0].timestamp)
+                velocity = dt > 0 ? sqrt(dx*dx + dy*dy) / dt : 0
+            } else if i == points.count - 1 && points.count > 1 {
+                // Backward difference for last point
+                let dx = points[i].x - points[i-1].x
+                let dy = points[i].y - points[i-1].y
+                let dt = Float(points[i].timestamp - points[i-1].timestamp)
+                velocity = dt > 0 ? sqrt(dx*dx + dy*dy) / dt : 0
+            } else if i > 0 && i < points.count - 1 {
+                // Central difference for middle points
+                let dx = points[i+1].x - points[i-1].x
+                let dy = points[i+1].y - points[i-1].y
+                let dt = Float(points[i+1].timestamp - points[i-1].timestamp)
+                velocity = dt > 0 ? sqrt(dx*dx + dy*dy) / dt : 0
+            } else {
+                velocity = 0
+            }
+            
+            velocities.append(velocity)
+        }
+        
+        // Calculate accelerations using central differences on velocities
+        for i in 0..<velocities.count {
+            let acceleration: Float
+            
+            if i == 0 && velocities.count > 1 && points.count > 1 {
+                // Forward difference
+                let dv = velocities[1] - velocities[0]
+                let dt = Float(points[1].timestamp - points[0].timestamp)
+                acceleration = dt > 0 ? dv / dt : 0
+            } else if i == velocities.count - 1 && velocities.count > 1 && i > 0 {
+                // Backward difference
+                let dv = velocities[i] - velocities[i-1]
+                let dt = Float(points[i].timestamp - points[i-1].timestamp)
+                acceleration = dt > 0 ? dv / dt : 0
+            } else if i > 0 && i < velocities.count - 1 {
+                // Central difference
+                let dv = velocities[i+1] - velocities[i-1]
+                let dt = Float(points[i+1].timestamp - points[i-1].timestamp)
+                acceleration = dt > 0 ? dv / dt : 0
+            } else {
+                acceleration = 0
+            }
+            
+            accelerations.append(acceleration)
+        }
+        
+        // Identify power spots (local maxima in velocity)
+        var powerSpots: [Bool] = Array(repeating: false, count: points.count)
+        
+        // Find the 90th percentile velocity as threshold for power spots
+        let sortedVelocities = velocities.sorted()
+        let percentileIndex = Int(Double(sortedVelocities.count) * 0.9)
+        let velocityThreshold = sortedVelocities[min(percentileIndex, sortedVelocities.count - 1)]
+        
+        // Mark local maxima above threshold as power spots
+        for i in 1..<velocities.count - 1 {
+            if velocities[i] >= velocityThreshold &&
+               velocities[i] > velocities[i-1] &&
+               velocities[i] > velocities[i+1] {
+                powerSpots[i] = true
+            }
+        }
+        
+        // Create new trajectory points with motion metrics
+        var enhancedPoints: [TrajectoryPoint] = []
+        for i in 0..<points.count {
+            let point = points[i]
+            let enhanced = TrajectoryPoint(
+                x: point.x,
+                y: point.y,
+                timestamp: point.timestamp,
+                confidence: point.confidence,
+                isInterpolated: point.isInterpolated,
+                velocity: velocities[i],
+                acceleration: accelerations[i],
+                isPowerSpot: powerSpots[i]
+            )
+            enhancedPoints.append(enhanced)
+        }
+        
+        return enhancedPoints
     }
 
     // MARK: - Gap Fill & Smoothing
