@@ -49,6 +49,11 @@ struct AnalysisView: View {
                             await precomputeIfNeeded(for: shot, videoURL: url) 
                         }
                     }
+                    .task(id: selectedShotID) {
+                        if let url = videoURL {
+                            await precomputeIfNeeded(for: shot, videoURL: url)
+                        }
+                    }
                 }
                 
                 // Overlay Layer 2: Metrics bar (top)
@@ -113,17 +118,6 @@ struct AnalysisView: View {
                 playSegment(shot)
             }
         }
-        .onChange(of: currentTime) { _, t in
-            // Update selection based on current playback position
-            guard isPlaying, !shots.isEmpty, playingSegment == nil else { return }
-            
-            // Find which shot contains current time
-            if let containingShot = shots.first(where: { t >= $0.startTime && t <= $0.endTime }) {
-                if selectedShotID != containingShot.id {
-                    selectedShotID = containingShot.id
-                }
-            }
-        }
         
     }
 
@@ -140,7 +134,11 @@ struct AnalysisView: View {
                     showsControls: false,
                     segmentStart: playingSegment?.startTime,
                     segmentEnd: playingSegment?.endTime,
-                    onSegmentComplete: { playingSegment = nil }
+                    onSegmentComplete: {
+                        if let seg = playingSegment { currentTime = seg.endTime }
+                        isPlaying = false
+                        playingSegment = nil
+                    }
                 )
                 .accessibilityLabel("Video player")
             } else {
@@ -249,6 +247,9 @@ struct AnalysisView: View {
         logger.log("[UI] playSegment id=\(shot.id.uuidString, privacy: .public) start=\(shot.startTime, privacy: .public) end=\(shot.endTime, privacy: .public) duration=\(shot.duration, format: .fixed(precision: 3))")
         playingSegment = shot
         currentTime = shot.startTime
+        if let url = videoURL {
+            Task { await precomputeIfNeeded(for: shot, videoURL: url) }
+        }
         isPlaying = true
     }
     

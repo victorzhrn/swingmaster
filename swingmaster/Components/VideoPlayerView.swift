@@ -40,9 +40,9 @@ struct VideoPlayerView: UIViewControllerRepresentable {
 
         // Swap player if URL changed
         if let currentAsset = (uiViewController.player?.currentItem?.asset as? AVURLAsset), currentAsset.url != url {
-            if let player = uiViewController.player, let token = coordinator.timeObserver {
-                player.removeTimeObserver(token)
-                coordinator.timeObserver = nil
+            if let player = uiViewController.player {
+                if let token = coordinator.timeObserver { player.removeTimeObserver(token); coordinator.timeObserver = nil }
+                if let btoken = coordinator.boundaryObserver { player.removeTimeObserver(btoken); coordinator.boundaryObserver = nil }
             }
             uiViewController.player?.pause()
             uiViewController.player = AVPlayer(url: url)
@@ -77,6 +77,20 @@ struct VideoPlayerView: UIViewControllerRepresentable {
             coordinator.lastLoggedBoundsStart = segmentStart
             coordinator.lastLoggedBoundsEnd = segmentEnd
             logger.log("[Player] Segment bounds updated start=\(segmentStart ?? -1, privacy: .public) end=\(segmentEnd ?? -1, privacy: .public)")
+            // Reconfigure boundary observer for strict segment stop
+            if let b = coordinator.boundaryObserver { player.removeTimeObserver(b); coordinator.boundaryObserver = nil }
+            if let end = segmentEnd {
+                let times = [NSValue(time: CMTime(seconds: max(0, end), preferredTimescale: 600))]
+                coordinator.boundaryObserver = player.addBoundaryTimeObserver(forTimes: times, queue: .main) {
+                    coordinator.hasTriggeredSegmentEnd = true
+                    let segStart = coordinator.segmentStart ?? -1
+                    let played = segStart >= 0 ? max(0, coordinator.lastPlayerTimeSeconds - segStart) : -1
+                    self.logger.log("[Player] Boundary stop at segEnd end=\(end, privacy: .public) played=\(played, privacy: .public)")
+                    player.pause()
+                    isPlaying = false
+                    coordinator.onSegmentComplete?()
+                }
+            }
             // Optionally jump to start when bounds change to ensure full segment playback
             if let s = segmentStart, abs((coordinator.lastPlayerTimeSeconds) - s) > 0.15 {
                 coordinator.isSeekingProgrammatically = true
@@ -132,6 +146,19 @@ struct VideoPlayerView: UIViewControllerRepresentable {
             let playing = player.rate != 0
             if isPlaying != playing { isPlaying = playing }
         }
+        // Configure boundary observer if segmentEnd is known
+        if coordinator.boundaryObserver == nil, let end = coordinator.segmentEnd {
+            let times = [NSValue(time: CMTime(seconds: max(0, end), preferredTimescale: 600))]
+            coordinator.boundaryObserver = player.addBoundaryTimeObserver(forTimes: times, queue: .main) {
+                coordinator.hasTriggeredSegmentEnd = true
+                let segStart = coordinator.segmentStart ?? -1
+                let played = segStart >= 0 ? max(0, coordinator.lastPlayerTimeSeconds - segStart) : -1
+                self.logger.log("[Player] Boundary stop at segEnd end=\(end, privacy: .public) played=\(played, privacy: .public)")
+                player.pause()
+                isPlaying = false
+                coordinator.onSegmentComplete?()
+            }
+        }
     }
 
     final class Coordinator {
@@ -144,6 +171,7 @@ struct VideoPlayerView: UIViewControllerRepresentable {
         var hasTriggeredSegmentEnd: Bool = false
         var lastLoggedBoundsStart: Double?
         var lastLoggedBoundsEnd: Double?
+        var boundaryObserver: Any?
         
         init(segmentStart: Double? = nil, segmentEnd: Double? = nil, onSegmentComplete: (() -> Void)? = nil) {
             self.segmentStart = segmentStart
