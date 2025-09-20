@@ -22,13 +22,11 @@ struct AnalysisView: View {
     @Environment(\.colorScheme) private var colorScheme
     private let logger = Logger(subsystem: "com.swingmaster", category: "AnalysisView")
 
-    // MARK: - Trajectories (on-demand)
-    private let objectDetector = TennisObjectDetector()
-    @State private var enabledTrajectories: Set<TrajectoryType> = [.rightWrist, .racketCenter]
+    // MARK: - Trajectories (computed from persisted data)
+    @State private var enabledTrajectories: Set<TrajectoryType> = [.rightWrist]  // Start with wrist as default
     @State private var trajectoryOptions: TrajectoryOptions = .default
     @State private var videoAspectRatio: CGFloat = 16.0/9.0
     @State private var trajectoryCache: [UUID: [TrajectoryType: [TrajectoryPoint]]] = [:]
-    @State private var objectFramesCache: [UUID: [ObjectDetectionFrame]] = [:]
 
     var body: some View {
         GeometryReader { geometry in
@@ -46,7 +44,7 @@ struct AnalysisView: View {
                         videoAspectRatio: videoAspectRatio
                     )
                     .allowsHitTesting(false)
-                    .task { 
+                    .task(id: enabledTrajectories) { 
                         if let url = videoURL {
                             await precomputeIfNeeded(for: shot, videoURL: url) 
                         }
@@ -301,20 +299,16 @@ struct AnalysisView: View {
 
 extension AnalysisView {
     fileprivate func precomputeIfNeeded(for shot: Shot, videoURL: URL) async {
-        if objectFramesCache[shot.id] == nil {
-            let pad = 0.5
-            let start = max(0, shot.startTime - pad)
-            let end = shot.endTime + pad
-            let orientation = visionOrientation(from: .portrait, isFront: false)
-            let frames = await objectDetector.detectObjects(in: videoURL, start: start, end: end, orientation: orientation)
-            objectFramesCache[shot.id] = frames
-        }
+        // Use persisted data - no need to detect objects on-demand anymore!
         var perType: [TrajectoryType: [TrajectoryPoint]] = trajectoryCache[shot.id] ?? [:]
+        
         for type in enabledTrajectories {
             if perType[type] == nil {
-                let poses = shots.first(where: { $0.id == shot.id })?.validatedSwing?.frames ?? []
-                let objects = objectFramesCache[shot.id] ?? []
-                perType[type] = TrajectoryComputer.compute(type: type, poseFrames: poses, objectFrames: objects, startTime: shot.startTime, options: trajectoryOptions)
+                // Use padded frames that are already persisted in Shot
+                let poses = shot.paddedPoseFrames
+                let objects = shot.paddedObjectFrames
+                let points = TrajectoryComputer.compute(type: type, poseFrames: poses, objectFrames: objects, startTime: shot.startTime, options: trajectoryOptions)
+                perType[type] = points
             }
         }
         trajectoryCache[shot.id] = perType

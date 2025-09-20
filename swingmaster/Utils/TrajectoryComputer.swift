@@ -80,7 +80,9 @@ enum TrajectoryComputer {
                                      from frames: [PoseFrame],
                                      startTime: Double) -> [TrajectoryPoint] {
         frames.compactMap { frame in
-            guard let point = frame.joints[joint], let conf = frame.confidences[joint], conf > 0.3 else { return nil }
+            guard let point = frame.joints[joint], let conf = frame.confidences[joint], conf > 0.3 else { 
+                return nil 
+            }
             return TrajectoryPoint(x: Float(point.x),
                                    y: Float(point.y),
                                    timestamp: frame.timestamp - startTime,

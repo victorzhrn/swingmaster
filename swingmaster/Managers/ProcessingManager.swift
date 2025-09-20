@@ -95,6 +95,11 @@ final class ProcessingManager: ObservableObject {
             let duration = VideoStorage.getDurationSeconds(for: session.videoURL)
             let shots = results.map { res in
                 let t = (res.segment.startTime + res.segment.endTime) / 2.0
+                
+                // Extract padded frames from the result
+                let paddedPoseFrames = res.segment.frames  // These are already padded from VideoProcessor
+                let paddedObjectFrames = res.objectFrames ?? []  // Get from AnalysisResult if available
+                
                 let shot = Shot(
                     id: res.id,
                     time: t,
@@ -103,9 +108,11 @@ final class ProcessingManager: ObservableObject {
                     startTime: res.segment.startTime,
                     endTime: res.segment.endTime,
                     validatedSwing: res.validatedSwing,  // Pass along for on-demand analysis
-                    segmentMetrics: res.segmentMetrics  // Pass along for on-demand analysis
+                    segmentMetrics: res.segmentMetrics,  // Pass along for on-demand analysis
+                    paddedPoseFrames: paddedPoseFrames,  // Store padded pose frames
+                    paddedObjectFrames: paddedObjectFrames  // Store padded object frames
                 )
-                self.logger.log("[Save] Shot type=\(shot.type.rawValue, privacy: .public) startTS=\(shot.startTime, privacy: .public) endTS=\(shot.endTime, privacy: .public) duration=\(shot.duration, format: .fixed(precision: 3))")
+                self.logger.log("[Save] Shot type=\(shot.type.rawValue, privacy: .public) startTS=\(shot.startTime, privacy: .public) endTS=\(shot.endTime, privacy: .public) duration=\(shot.duration, format: .fixed(precision: 3)) poses=\(paddedPoseFrames.count) objects=\(paddedObjectFrames.count)")
                 return shot
             }
             AnalysisStore.save(videoURL: session.videoURL, duration: duration, shots: shots)

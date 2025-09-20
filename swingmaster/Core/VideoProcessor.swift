@@ -39,19 +39,64 @@ public final class VideoProcessor: ObservableObject {
         let videoFPS = getVideoFPS(from: url) ?? 10.0
         logger.log("[File] Using video FPS: \(videoFPS, format: .fixed(precision: 1))")
         
+        // Extract poses first
         let poseFrames = await poseProcessor.processVideoFile(url, targetFPS: videoFPS) { [weak self] p in
-            Task { @MainActor in self?.state = .extractingPoses(progress: p) }
+            Task { @MainActor in self?.state = .extractingPoses(progress: p * 0.5) } // First 50% of progress
         }
 
-        // TODO: Implement object detection on video frames similar to live path.
-        // For now, return empty objects aligned with pose frames timing.
-        let objectFrames: [ObjectDetectionFrame] = poseFrames.map { frame in
-            ObjectDetectionFrame(timestamp: frame.timestamp, racket: nil, ball: nil)
+        // Extract object detection for the entire video duration
+        guard !poseFrames.isEmpty else {
+            return (poseFrames, [])
         }
-
+        
+        let startTime = poseFrames.first?.timestamp ?? 0
+        let endTime = poseFrames.last?.timestamp ?? 0
+        
+        // Update state for object detection phase
+        await MainActor.run { self.state = .extractingPoses(progress: 0.5) }
+        
+        // Run object detection on the full video timespan
+        let objectFrames = await objectDetector.detectObjects(
+            in: url,
+            start: startTime,
+            end: endTime,
+            orientation: .right,
+            confidenceThreshold: 0.3
+        )
+        
+        // Update progress to complete
+        await MainActor.run { self.state = .extractingPoses(progress: 1.0) }
+        
+        logger.log("[File] Extracted \(poseFrames.count) pose frames and \(objectFrames.count) object frames")
         return (poseFrames, objectFrames)
     }
 
+    // Helper to extract padded segment data
+    private func extractPaddedSegmentData(
+        swing: ValidatedSwing,
+        allPoseFrames: [PoseFrame],
+        allObjectFrames: [ObjectDetectionFrame],
+        paddingSeconds: Double = 0.5
+    ) -> (poseFrames: [PoseFrame], objectFrames: [ObjectDetectionFrame]) {
+        let swingStart = swing.frames.first?.timestamp ?? 0
+        let swingEnd = swing.frames.last?.timestamp ?? 0
+        
+        // Add padding to capture full motion
+        let paddedStart = swingStart - paddingSeconds
+        let paddedEnd = swingEnd + paddingSeconds
+        
+        // Filter frames within padded window
+        let relevantPoses = allPoseFrames.filter { 
+            $0.timestamp >= paddedStart && $0.timestamp <= paddedEnd 
+        }
+        
+        let relevantObjects = allObjectFrames.filter { 
+            $0.timestamp >= paddedStart && $0.timestamp <= paddedEnd 
+        }
+        
+        return (relevantPoses, relevantObjects)
+    }
+    
     public func processVideo(_ url: URL) async -> [AnalysisResult] {
         logger.log("[File] Start processing: \(url.lastPathComponent, privacy: .public)")
         // 1) Extract poses AND objects
@@ -97,17 +142,25 @@ public final class VideoProcessor: ObservableObject {
         for swing in validated {
             let segmentMetrics = metricsCalculator.calculateSegmentMetrics(for: swing.frames)
             
+            // Extract padded frames for this swing
+            let (paddedPoses, paddedObjects) = extractPaddedSegmentData(
+                swing: swing,
+                allPoseFrames: poseFrames,
+                allObjectFrames: objectFrames
+            )
+            
             // Create minimal AnalysisResult without AI feedback
             let result = AnalysisResult(
                 segment: SwingSegment(
                     startTime: swing.frames.first?.timestamp ?? 0,
                     endTime: swing.frames.last?.timestamp ?? 0,
-                    frames: swing.frames
+                    frames: paddedPoses  // Use padded frames in segment
                 ),
                 swingType: swing.type,
                 keyFrames: [],      // Can populate from swing.keyFrameIndices if needed
                 validatedSwing: swing,  // Store for on-demand analysis
-                segmentMetrics: segmentMetrics  // Store for on-demand analysis
+                segmentMetrics: segmentMetrics,  // Store for on-demand analysis
+                objectFrames: paddedObjects  // Store padded object frames
             )
             results.append(result)
             let s = result.segment.startTime
@@ -149,6 +202,12 @@ public final class VideoProcessor: ObservableObject {
         for swing in validated {
             let segmentMetrics = metricsCalculator.calculateSegmentMetrics(for: swing.frames)
             
+            // For live session, we don't have object frames yet
+            // Create empty object frames aligned with pose frames
+            let emptyObjectFrames = swing.frames.map { frame in
+                ObjectDetectionFrame(timestamp: frame.timestamp, racket: nil, ball: nil)
+            }
+            
             // Create minimal AnalysisResult without AI feedback
             let result = AnalysisResult(
                 segment: SwingSegment(
@@ -159,7 +218,8 @@ public final class VideoProcessor: ObservableObject {
                 swingType: swing.type,
                 keyFrames: [],      // Can populate from swing.keyFrameIndices if needed
                 validatedSwing: swing,  // Store for on-demand analysis
-                segmentMetrics: segmentMetrics  // Store for on-demand analysis
+                segmentMetrics: segmentMetrics,  // Store for on-demand analysis
+                objectFrames: emptyObjectFrames  // Empty for live sessions
             )
             results.append(result)
             let s = result.segment.startTime

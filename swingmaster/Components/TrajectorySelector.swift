@@ -74,15 +74,33 @@ struct TrajectorySelector: View {
     }
     
     private func initializeSelection() {
-        // Load saved preference or default to racket
-        if let savedOption = TrajectoryOption(rawValue: lastSelectedTrajectory.capitalized) {
-            selectedOption = savedOption
+        // Sync with the current binding state first
+        // If enabledTrajectories already has a selection, use that
+        if !enabledTrajectories.isEmpty {
+            // Find which option matches the current enabled trajectories
+            for option in TrajectoryOption.allCases {
+                if let type = option.trajectoryType, enabledTrajectories.contains(type) {
+                    selectedOption = option
+                    lastSelectedTrajectory = option.rawValue.lowercased()
+                    return // Don't update the binding, it's already set
+                }
+            }
+            // If no trajectories enabled, set to off
+            if enabledTrajectories.isEmpty {
+                selectedOption = .off
+                lastSelectedTrajectory = "off"
+                return // Don't update the binding
+            }
         } else {
-            selectedOption = .racket
+            // No trajectories enabled, load saved preference or default to racket
+            if let savedOption = TrajectoryOption(rawValue: lastSelectedTrajectory.capitalized) {
+                selectedOption = savedOption
+            } else {
+                selectedOption = .racket
+            }
+            // Apply the selection to the binding
+            updateEnabledTrajectories(for: selectedOption)
         }
-        
-        // Apply the selection to the binding
-        updateEnabledTrajectories(for: selectedOption)
     }
     
     private func selectOption(_ option: TrajectoryOption) {

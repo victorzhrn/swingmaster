@@ -8,20 +8,38 @@
 import Foundation
 import CoreGraphics
 
-struct RacketDetection: Sendable {
-    let boundingBox: CGRect    // Normalized 0-1
-    let confidence: Float
-    let timestamp: TimeInterval
+public struct RacketDetection: Sendable, Codable {
+    public let boundingBox: CGRect    // Normalized 0-1
+    public let confidence: Float
+    public let timestamp: TimeInterval
+    
+    public init(boundingBox: CGRect, confidence: Float, timestamp: TimeInterval) {
+        self.boundingBox = boundingBox
+        self.confidence = confidence
+        self.timestamp = timestamp
+    }
 }
 
-struct BallDetection: Sendable {
-    let boundingBox: CGRect    // Normalized 0-1
-    let confidence: Float
-    let timestamp: TimeInterval
+public struct BallDetection: Sendable, Codable {
+    public let boundingBox: CGRect    // Normalized 0-1
+    public let confidence: Float
+    public let timestamp: TimeInterval
+    
+    public init(boundingBox: CGRect, confidence: Float, timestamp: TimeInterval) {
+        self.boundingBox = boundingBox
+        self.confidence = confidence
+        self.timestamp = timestamp
+    }
 }
 
-struct ObjectDetectionFrame: Sendable {
-    let timestamp: TimeInterval
-    let racket: RacketDetection?
-    let ball: BallDetection?
+public struct ObjectDetectionFrame: Sendable, Codable {
+    public let timestamp: TimeInterval
+    public let racket: RacketDetection?
+    public let ball: BallDetection?
+    
+    public init(timestamp: TimeInterval, racket: RacketDetection? = nil, ball: BallDetection? = nil) {
+        self.timestamp = timestamp
+        self.racket = racket
+        self.ball = ball
+    }
 }

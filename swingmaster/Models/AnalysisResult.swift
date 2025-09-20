@@ -17,19 +17,22 @@ public struct AnalysisResult: Sendable, Identifiable {
     // Store these for on-demand AI analysis
     public var validatedSwing: ValidatedSwing?
     public var segmentMetrics: SegmentMetrics?
+    public var objectFrames: [ObjectDetectionFrame]?  // NEW: Store object detection frames
 
     public init(id: UUID = UUID(),
                 segment: SwingSegment,
                 swingType: ShotType,
                 keyFrames: [KeyFrame],
                 validatedSwing: ValidatedSwing? = nil,
-                segmentMetrics: SegmentMetrics? = nil) {
+                segmentMetrics: SegmentMetrics? = nil,
+                objectFrames: [ObjectDetectionFrame]? = nil) {
         self.id = id
         self.segment = segment
         self.swingType = swingType
         self.keyFrames = keyFrames
         self.validatedSwing = validatedSwing
         self.segmentMetrics = segmentMetrics
+        self.objectFrames = objectFrames
     }
 }
 

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 
 /// Persisted analysis payload for a specific video file.
 /// Keyed by the video file name (lastPathComponent) to be resilient to path changes.
@@ -30,11 +31,19 @@ enum AnalysisStore {
     ///   - duration: The total video duration in seconds.
     ///   - shots: The shots to display in AnalysisView.
     static func save(videoURL: URL, duration: Double, shots: [Shot]) {
+        let logger = Logger(subsystem: "com.swingmaster", category: "AnalysisStore")
         let fileName = videoURL.lastPathComponent
+        
         var all = cache
         all[fileName] = PersistedAnalysis(videoFileName: fileName, duration: duration, shots: shots)
         persist(all)
         cache = all
+        
+        // Log storage size for monitoring
+        if let data = try? JSONEncoder().encode(all[fileName]) {
+            let actualSize = data.count / 1024
+            logger.log("[Storage] Saved \(shots.count) shots for \(fileName, privacy: .public): \(actualSize)KB")
+        }
     }
 
     /// Load persisted analysis for a given video URL, if available.

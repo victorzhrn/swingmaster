@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 import Vision
 import os
 
-public struct ValidatedSwing: Sendable {
+public struct ValidatedSwing: Sendable, Codable {
     public let frames: [PoseFrame]
     public let type: ShotType
     public let confidence: Float
@@ -21,7 +21,7 @@ public struct ValidatedSwing: Sendable {
     public let keyFrameIndices: KeyFrameIndices
 }
 
-public struct KeyFrameIndices: Sendable {
+public struct KeyFrameIndices: Sendable, Codable {
     public let preparation: Int
     public let backswing: Int
     public let contact: Int

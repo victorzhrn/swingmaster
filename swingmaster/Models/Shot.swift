@@ -48,33 +48,47 @@ public enum ShotType: String, Codable, CaseIterable, Sendable {
 }
 
 /// Simple model representing a detected shot in a session.
-struct Shot: Identifiable, Hashable, Codable {
-    let id: UUID
-    let time: Double  // Center time of the swing (kept for compatibility)
-    let startTime: Double  // Start of the swing segment
-    let endTime: Double    // End of the swing segment
-    let type: ShotType
-    let issue: String
+public struct Shot: Identifiable, Hashable, Codable {
+    public let id: UUID
+    public let time: Double  // Center time of the swing (kept for compatibility)
+    public let startTime: Double  // Start of the swing segment
+    public let endTime: Double    // End of the swing segment
+    public let type: ShotType
+    public let issue: String
     
-    // Transient fields - not persisted, only used during active session
-    var validatedSwing: ValidatedSwing? = nil  // Store the validated swing for AI analysis
-    var segmentMetrics: SegmentMetrics? = nil  // Store the metrics for AI analysis
+    // NOW PERSISTED - contains validated swing data
+    public let validatedSwing: ValidatedSwing?  // Store the validated swing for AI analysis
+    public let segmentMetrics: SegmentMetrics?  // Store the metrics for AI analysis
+    
+    // NEW: Padded frame data for trajectory computation (swing ± 0.5s)
+    public let paddedPoseFrames: [PoseFrame]
+    public let paddedObjectFrames: [ObjectDetectionFrame]
     
     enum CodingKeys: String, CodingKey {
-        case id, time, startTime, endTime, type, issue, segmentMetrics
-        // Explicitly exclude validatedSwing from encoding/decoding
+        case id, time, startTime, endTime, type, issue
+        case validatedSwing, segmentMetrics
+        case paddedPoseFrames, paddedObjectFrames
     }
     
-    // Custom Hashable to exclude transient fields
-    func hash(into hasher: inout Hasher) {
+    // Custom Hashable to exclude frame data
+    public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
     
-    static func == (lhs: Shot, rhs: Shot) -> Bool {
+    public static func == (lhs: Shot, rhs: Shot) -> Bool {
         lhs.id == rhs.id
     }
 
-    init(id: UUID = UUID(), time: Double, type: ShotType, issue: String, startTime: Double? = nil, endTime: Double? = nil, validatedSwing: ValidatedSwing? = nil, segmentMetrics: SegmentMetrics? = nil) {
+    public init(id: UUID = UUID(), 
+                time: Double, 
+                type: ShotType, 
+                issue: String, 
+                startTime: Double? = nil, 
+                endTime: Double? = nil, 
+                validatedSwing: ValidatedSwing? = nil, 
+                segmentMetrics: SegmentMetrics? = nil,
+                paddedPoseFrames: [PoseFrame]? = nil,
+                paddedObjectFrames: [ObjectDetectionFrame]? = nil) {
         self.id = id
         self.time = time
         // Default to 1 second swing duration if not specified
@@ -84,6 +98,8 @@ struct Shot: Identifiable, Hashable, Codable {
         self.issue = issue
         self.validatedSwing = validatedSwing
         self.segmentMetrics = segmentMetrics
+        self.paddedPoseFrames = paddedPoseFrames ?? []
+        self.paddedObjectFrames = paddedObjectFrames ?? []
     }
     
     /// Duration of the swing in seconds
@@ -121,9 +137,10 @@ extension Array where Element == Shot {
             let swingDuration = [0.9, 1.1, 0.8, 1.2][idx]  // Deterministic for previews
             let start = Swift.max(0, t - swingDuration/2)
             let end = Swift.min(duration, t + swingDuration/2)
-            var shot = Shot(time: t, type: types[idx], issue: issues[idx], 
-                          startTime: start, endTime: end)
-            shot.segmentMetrics = sampleMetrics
+            let shot = Shot(time: t, type: types[idx], issue: issues[idx], 
+                          startTime: start, endTime: end,
+                          validatedSwing: nil,
+                          segmentMetrics: sampleMetrics)
             return shot
         }
     }
