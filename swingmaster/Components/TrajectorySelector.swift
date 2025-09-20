@@ -2,100 +2,155 @@
 //  TrajectorySelector.swift
 //  swingmaster
 //
-//  Controls for selecting trajectory types and options.
+//  Segmented control trajectory selector for single trajectory visualization.
 //
 
 import SwiftUI
+import UIKit
 
 struct TrajectorySelector: View {
     @Binding var enabledTrajectories: Set<TrajectoryType>
-    @Binding var trajectoryOptions: TrajectoryOptions
-    @State private var isExpanded = false
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 8) {
-            Button(action: { withAnimation { isExpanded.toggle() } }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "scribble.variable")
-                    if !enabledTrajectories.isEmpty {
-                        Text("\(enabledTrajectories.count)")
-                            .font(.caption)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(TennisColors.tennisGreen))
-                            .foregroundColor(.white)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.regularMaterial)
-                .clipShape(Capsule())
+    
+    // Store the last selected trajectory for better UX
+    @AppStorage("lastSelectedTrajectory") private var lastSelectedTrajectory: String = "racket"
+    
+    // Single selection state
+    @State private var selectedOption: TrajectoryOption = .racket
+    
+    // Trajectory options for segmented control
+    enum TrajectoryOption: String, CaseIterable {
+        case racket = "Racket"
+        case wrist = "Wrist"
+        case elbow = "Elbow"
+        case shoulder = "Shoulder"
+        case off = "Off"
+        
+        var trajectoryType: TrajectoryType? {
+            switch self {
+            case .racket: return .racketCenter
+            case .wrist: return .rightWrist
+            case .elbow: return .rightElbow
+            case .shoulder: return .rightShoulder
+            case .off: return nil
             }
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(TrajectoryType.allCases) { type in
-                        Button(action: { toggle(type) }) {
-                            HStack {
-                                Image(systemName: icon(for: type))
-                                    .frame(width: 20)
-                                Text(type.rawValue)
-                                    .font(.system(size: 13))
-                                Spacer()
-                                if enabledTrajectories.contains(type) {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 11, weight: .bold))
-                                }
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                    Divider().padding(.vertical, 4)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Toggle("Fill Gaps", isOn: Binding(
-                            get: { trajectoryOptions.fillGaps },
-                            set: { newValue in
-                                trajectoryOptions = TrajectoryOptions(
-                                    fillGaps: newValue,
-                                    maxGapSeconds: trajectoryOptions.maxGapSeconds,
-                                    smooth: trajectoryOptions.smooth,
-                                    smoothingWindow: trajectoryOptions.smoothingWindow
-                                )
-                            }
-                        )).font(.system(size: 12))
-                        Toggle("Smooth Path", isOn: Binding(
-                            get: { trajectoryOptions.smooth },
-                            set: { newValue in
-                                trajectoryOptions = TrajectoryOptions(
-                                    fillGaps: trajectoryOptions.fillGaps,
-                                    maxGapSeconds: trajectoryOptions.maxGapSeconds,
-                                    smooth: newValue,
-                                    smoothingWindow: trajectoryOptions.smoothingWindow
-                                )
-                            }
-                        )).font(.system(size: 12))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                }
-                .padding(.vertical, 8)
-                .frame(width: 200)
-                .background(.regularMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        
+        var color: Color {
+            // Use a consistent tennis green for all trajectory types
+            // Creates a more cohesive, professional look
+            switch self {
+            case .racket, .wrist, .elbow, .shoulder: 
+                return TennisColors.tennisGreen
+            case .off: 
+                return .clear
             }
         }
     }
-    private func toggle(_ type: TrajectoryType) {
-        if enabledTrajectories.contains(type) { enabledTrajectories.remove(type) } else { enabledTrajectories.insert(type) }
+    
+    var body: some View {
+        // Simplified segmented control for unified container
+        HStack(spacing: 2) { // Small spacing for visual separation
+            ForEach(TrajectoryOption.allCases, id: \.self) { option in
+                SegmentButton(
+                    title: option.rawValue,
+                    isSelected: selectedOption == option,
+                    color: option.color,
+                    action: {
+                        selectOption(option)
+                    }
+                )
+            }
+        }
+        .padding(.horizontal, 4)
+        .frame(height: 36) // More compact for integration
+        .background(
+            // Subtle background for segmented control
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.05))
+        )
+        .onAppear {
+            initializeSelection()
+        }
     }
-    private func icon(for type: TrajectoryType) -> String {
-        switch type {
-        case .rightWrist, .leftWrist: return "hand.raised"
-        case .rightElbow, .leftElbow: return "figure.arms.open"
-        case .rightShoulder, .leftShoulder: return "person"
-        case .racketCenter: return "circle"
-        case .ballCenter: return "circle.fill"
+    
+    private func initializeSelection() {
+        // Load saved preference or default to racket
+        if let savedOption = TrajectoryOption(rawValue: lastSelectedTrajectory.capitalized) {
+            selectedOption = savedOption
+        } else {
+            selectedOption = .racket
+        }
+        
+        // Apply the selection to the binding
+        updateEnabledTrajectories(for: selectedOption)
+    }
+    
+    private func selectOption(_ option: TrajectoryOption) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { // Standard .quick spring
+            selectedOption = option
+            lastSelectedTrajectory = option.rawValue.lowercased()
+            updateEnabledTrajectories(for: option)
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func updateEnabledTrajectories(for option: TrajectoryOption) {
+        // Clear all trajectories first
+        enabledTrajectories.removeAll()
+        
+        // Add the selected trajectory if not "off"
+        if let trajectoryType = option.trajectoryType {
+            enabledTrajectories.insert(trajectoryType)
+        }
+    }
+}
+
+// Segmented control button component
+struct SegmentButton: View {
+    let title: String
+    let isSelected: Bool
+    let color: Color
+    let action: () -> Void
+    
+    @State private var isPressed = false
+    
+    var body: some View {
+        Button(action: {
+            isPressed = true
+            action()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isPressed = false
+            }
+        }) {
+            Text(title)
+                .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                .foregroundColor(textColor)
+                .frame(maxWidth: .infinity)
+                .frame(height: 32) // Smaller height for pill design
+                .background(backgroundView)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .scaleEffect(isPressed ? 0.92 : 1.0)
+        .animation(.spring(response: 0.15, dampingFraction: 0.9), value: isPressed)
+    }
+    
+    private var textColor: Color {
+        if isSelected {
+            return .white.opacity(0.95) // Consistent selected opacity
+        } else {
+            return .white.opacity(0.6) // Consistent default opacity
+        }
+    }
+    
+    @ViewBuilder
+    private var backgroundView: some View {
+        if isSelected {
+            // Unified selection state with tennis green
+            Capsule()
+                .fill(TennisColors.tennisGreen.opacity(title == "Off" ? 0.1 : 0.15))
+        } else {
+            Color.clear
         }
     }
 }

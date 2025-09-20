@@ -31,123 +31,80 @@ struct AnalysisView: View {
     @State private var objectFramesCache: [UUID: [ObjectDetectionFrame]] = [:]
 
     var body: some View {
-        ScrollView {
-        VStack(spacing: 12) {
-            // Real video when available, otherwise placeholder
-            Group {
-                if let url = videoURL {
-                    VideoPlayerView(
-                        url: url,
-                        currentTime: $currentTime,
-                        isPlaying: $isPlaying,
-                        segmentStart: playingSegment?.startTime,
-                        segmentEnd: playingSegment?.endTime,
-                        onSegmentComplete: {
-                            // Segment playback completed
-                            playingSegment = nil
-                        }
+        GeometryReader { geometry in
+            ZStack {
+                // Base Layer: Full-screen video
+                videoLayer(geometry: geometry)
+                
+                // Overlay Layer 1: Trajectory visualization
+                if let shot = shots.first(where: { $0.id == selectedShotID }) {
+                    TrajectoryOverlay(
+                        trajectoriesByType: trajectoryCache[shot.id] ?? [:],
+                        enabledTrajectories: enabledTrajectories,
+                        currentTime: currentShotRelativeTime(shot: shot),
+                        shotDuration: max(0, shot.endTime - shot.startTime),
+                        videoAspectRatio: videoAspectRatio
                     )
-                    .frame(height: 320)
-                    .background(
+                    .allowsHitTesting(false)
+                    .task { 
+                        if let url = videoURL {
+                            await precomputeIfNeeded(for: shot, videoURL: url) 
+                        }
+                    }
+                }
+                
+                // Overlay Layer 2: Metrics bar (top)
+                VStack {
+                    SwingMetricsBar(shot: shots.first(where: { $0.id == selectedShotID }))
+                        .padding(.top, geometry.safeAreaInsets.top)
+                    Spacer()
+                }
+                
+                // Overlay Layer 3: Unified bottom control panel
+                VStack {
+                    Spacer()
+                    
+                    // Unified glass container for bottom controls
+                    VStack(spacing: 0) {
+                        // Trajectory selector row
+                        TrajectorySelector(
+                            enabledTrajectories: $enabledTrajectories
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        
+                        // Subtle divider
+                        Rectangle()
+                            .fill(Color.white.opacity(0.1))
+                            .frame(height: 0.5)
+                            .padding(.horizontal, 16)
+                        
+                        // Timeline strip row
+                        TimelineStripEnhanced(
+                            duration: duration,
+                            shots: shots,
+                            selectedShotID: $selectedShotID,
+                            currentTime: $currentTime,
+                            isPlaying: $isPlaying,
+                            onPlaySegment: { shot in
+                                playSegment(shot)
+                            }
+                        )
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                    }
+                    .background(.thinMaterial) // Medium glass effect
+                    .overlay(
                         RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.glassBackground)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1) // 15% white border
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
-                    )
-                    .shadow(color: colorScheme == .light ? .black.opacity(0.1) : .clear, radius: 10, y: 5)
-                    .overlay(
-                        Group {
-                            if let shot = shots.first(where: { $0.id == selectedShotID }) {
-                                TrajectoryOverlay(
-                                    trajectoriesByType: trajectoryCache[shot.id] ?? [:],
-                                    enabledTrajectories: enabledTrajectories,
-                                    currentTime: currentShotRelativeTime(shot: shot),
-                                    shotDuration: max(0, shot.endTime - shot.startTime),
-                                    videoAspectRatio: videoAspectRatio
-                                )
-                                .allowsHitTesting(false)
-                                .task { await precomputeIfNeeded(for: shot, videoURL: url) }
-                            }
-                        }
-                    )
-                    .overlay(alignment: .topTrailing) {
-                        TrajectorySelector(
-                            enabledTrajectories: $enabledTrajectories,
-                            trajectoryOptions: $trajectoryOptions
-                        )
-                        .padding(12)
-                    }
-                    .overlay(alignment: .top) {
-                        if let segment = playingSegment {
-                            HStack(spacing: 8) {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 12, weight: .bold))
-                                Text(segment.type.accessibleName)
-                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Capsule().fill(Color.black.opacity(0.35)))
-                            .foregroundColor(.white)
-                            .padding(.top, 8)
-                        }
-                    }
-                    .accessibilityLabel("Video player")
-                } else {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(UIColor.secondarySystemBackground))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
-                            )
-                        VStack(spacing: 8) {
-                            Image(systemName: "play.rectangle.fill")
-                                .font(.system(size: 40))
-                                .foregroundColor(.white.opacity(0.9))
-                            Text(timeString(currentTime) + " / " + timeString(duration))
-                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.9))
-                        }
-                    }
-                    .shadow(color: colorScheme == .light ? .black.opacity(0.1) : .clear, radius: 10, y: 5)
-                    .frame(height: 320)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Video player")
-                    .accessibilityValue("Time \(timeString(currentTime)) of \(timeString(duration))")
+                    .padding(.horizontal, 16) // Consistent 16pt margins
+                    .padding(.bottom, geometry.safeAreaInsets.bottom + 8)
                 }
             }
-
-            // Enhanced Timeline Strip with segment expansion
-            TimelineStripEnhanced(
-                duration: duration,
-                shots: shots,
-                selectedShotID: $selectedShotID,
-                currentTime: $currentTime,
-                isPlaying: $isPlaying,
-                onPlaySegment: { shot in
-                    playSegment(shot)
-                },
-                onPrev: selectPrev,
-                onNext: selectNext
-            )
-            .padding(.horizontal, 16)
-
-            // Navigation integrated into the timeline; no video overlays
-
-            // Insight Card
-            enhancedInsightCard
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-
-            Spacer(minLength: 0)
+            .ignoresSafeArea(.container, edges: .all)
         }
-        .padding(.top, 8)
-        }
-        .background(Color(UIColor.systemBackground).ignoresSafeArea())
         .onAppear {
             if selectedShotID == nil, let first = shots.first { selectedShotID = first.id; currentTime = first.time }
             if let url = videoURL { loadVideoAspectRatio(from: url) }
@@ -173,6 +130,40 @@ struct AnalysisView: View {
     }
 
     // MARK: - Subviews
+    
+    @ViewBuilder
+    private func videoLayer(geometry: GeometryProxy) -> some View {
+        Group {
+            if let url = videoURL {
+                VideoPlayerView(
+                    url: url,
+                    currentTime: $currentTime,
+                    isPlaying: $isPlaying,
+                    showsControls: false,
+                    segmentStart: playingSegment?.startTime,
+                    segmentEnd: playingSegment?.endTime,
+                    onSegmentComplete: { playingSegment = nil }
+                )
+                .accessibilityLabel("Video player")
+            } else {
+                // Full-screen placeholder
+                ZStack {
+                    Color.black
+                    VStack(spacing: 12) {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(.white.opacity(0.3))
+                        Text(timeString(currentTime) + " / " + timeString(duration))
+                            .font(.system(size: 16, weight: .medium, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Video player")
+                .accessibilityValue("Time \(timeString(currentTime)) of \(timeString(duration))")
+            }
+        }
+    }
     
     private var persistentVideoControls: some View {
         HStack(spacing: 16) {
@@ -246,100 +237,6 @@ struct AnalysisView: View {
 
     
 
-    private var enhancedInsightCard: some View {
-        let selected = shots.first(where: { $0.id == selectedShotID })
-        
-        return GlassContainer(style: .medium, cornerRadius: 16) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text(selected?.type.accessibleName ?? "Shot")
-                        .font(.system(size: 17, weight: .semibold))
-                    Spacer()
-                }
-                .padding(.bottom, 4)
-                
-                // Simple Metrics Section
-                if let selected = selected, let metrics = selected.segmentMetrics {
-                    simpleMetricsDisplay(metrics)
-                }
-            }
-            .padding(16)
-        }
-    }
-
-    
-    // MARK: - Simple Metrics Display
-    
-    @ViewBuilder
-    private func simpleMetricsDisplay(_ metrics: SegmentMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            
-            // Peak Speed
-            HStack {
-                Image(systemName: "bolt.fill")
-                    .foregroundColor(.orange)
-                    .frame(width: 20)
-                Text("Peak Speed")
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text("\(Int(metrics.peakAngularVelocity)) rad/s")
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
-            }
-            
-            // Shoulder Rotation  
-            HStack {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundColor(.blue)
-                    .frame(width: 20)
-                Text("Shoulder Turn")
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text("\(Int(metrics.backswingAngle))°")
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
-            }
-            
-            // Contact Point Height
-            HStack {
-                Image(systemName: "target")
-                    .foregroundColor(.green)
-                    .frame(width: 20)
-                Text("Contact Height")
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text("\(Int(metrics.contactPoint.y * 100))%")
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
-            }
-            
-            // Follow Through
-            HStack {
-                Image(systemName: "arrow.up.right")
-                    .foregroundColor(.purple)
-                    .frame(width: 20)
-                Text("Follow Through")
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text("\(Int(metrics.followThroughHeight * 100))%")
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
-            }
-            
-            // Tracking Quality
-            HStack {
-                Image(systemName: "checkmark.circle")
-                    .foregroundColor(metrics.averageConfidence > 0.7 ? .green : .orange)
-                    .frame(width: 20)
-                Text("Tracking Quality")
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text("\(Int(metrics.averageConfidence * 100))%")
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
-            }
-        }
-    }
     
     
 

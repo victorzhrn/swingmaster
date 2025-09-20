@@ -2,8 +2,8 @@
 //  TimelineStripEnhanced.swift
 //  swingmaster
 //
-//  Context-aware timeline that shows dots by default and expands selected shot
-//  into a segment showing its duration. Supports segment playback.
+//  Simplified timeline with direct manipulation. Markers expand in place to show segments.
+//  Cleaner visual design following iOS design principles.
 //
 
 import SwiftUI
@@ -19,64 +19,71 @@ struct TimelineStripEnhanced: View {
     /// Callback when user wants to play a specific segment
     var onPlaySegment: ((Shot) -> Void)?
     
-    /// Optional navigation callbacks for prev/next controls at edges
-    var onPrev: (() -> Void)? = nil
-    var onNext: (() -> Void)? = nil
-    
     /// State for animation
     @State private var expandedShotID: Shot.ID?
-    @State private var pulsingMarkerID: Shot.ID?
+    @State private var dragLocation: CGPoint? = nil
+    @State private var showNavigationHint: Bool = false
     @Namespace private var markerNamespace
     @Environment(\.colorScheme) private var colorScheme
     
-    private let minInteractiveRadius: CGFloat = 22  // Increased for 44pt touch target
-    private let bandHeight: CGFloat = 56
+    private let markerSize: CGFloat = 12
+    private let expandedHeight: CGFloat = 32
+    private let bandHeight: CGFloat = 48  // Reduced from 56
     
     var body: some View {
-        GeometryReader { geo in
-            ScrollViewReader { scrollProxy in
-                // For short videos, avoid nested scrolling (fix scroll bug)
-                Group {
-                    if duration < 120 {
-                        HStack(spacing: 0) {
-                            Color.clear.frame(width: 20)
-                            timelineContent(geometry: geo)
-                                .id("timeline-content")
-                            Color.clear.frame(width: 20)
-                        }
-                    } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 0) {
-                                Color.clear.frame(width: 20)
-                                timelineContent(geometry: geo)
-                                    .id("timeline-content")
-                                Color.clear.frame(width: 20)
+        HStack(spacing: 0) {
+            // Compact prev button (integrated into timeline edge)
+            Button(action: navigatePrev) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(canNavigatePrev ? .white.opacity(0.95) : .white.opacity(0.3))
+                    .frame(width: 32, height: bandHeight)
+                    .contentShape(Rectangle())
+            }
+            .disabled(!canNavigatePrev)
+            .buttonStyle(PlainButtonStyle())
+            
+            // Timeline content
+            GeometryReader { geo in
+                ScrollViewReader { scrollProxy in
+                    timelineContent(geometry: geo)
+                        .onChange(of: selectedShotID) { oldValue, newValue in
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { // Standard .quick spring
+                                expandedShotID = newValue
                             }
-                        }
-                    }
-                }
-                .onChange(of: selectedShotID) { oldValue, newValue in
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                        expandedShotID = newValue
-                        pulsingMarkerID = newValue
-                    }
-                    if let id = newValue {
-                        withAnimation(.spring(response: 0.3)) {
-                            scrollProxy.scrollTo(id, anchor: .center)
-                        }
-                        // Stop pulsing after a delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            if pulsingMarkerID == id {
-                                withAnimation {
-                                    pulsingMarkerID = nil
+                            if let id = newValue {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    scrollProxy.scrollTo(id, anchor: .center)
                                 }
                             }
                         }
+                }
+            }
+            
+            // Compact next button (integrated into timeline edge)
+            Button(action: navigateNext) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(canNavigateNext ? .white.opacity(0.95) : .white.opacity(0.3))
+                    .frame(width: 32, height: bandHeight)
+                    .contentShape(Rectangle())
+            }
+            .disabled(!canNavigateNext)
+            .buttonStyle(PlainButtonStyle())
+        }
+        .frame(height: bandHeight)
+        .onAppear {
+            // Show navigation hint for crowded timelines
+            if shouldShowNavigationHint {
+                showNavigationHint = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        showNavigationHint = false
                     }
                 }
             }
         }
-        .frame(height: bandHeight)
+        .overlay(navigationHintOverlay, alignment: .top)
     }
     
     // MARK: - Main Timeline Content
@@ -84,66 +91,42 @@ struct TimelineStripEnhanced: View {
     @ViewBuilder
     private func timelineContent(geometry geo: GeometryProxy) -> some View {
         ZStack(alignment: .leading) {
-                // Timeline content (padded inside)
-                Group {
-                    // Baseline axis
-                    Capsule()
-                        .fill(colorScheme == .dark ? Color.white.opacity(0.25) : Color.black.opacity(0.12))
-                        .frame(height: 3)
-                        .offset(y: -2)
-
-                    // Markers and segments
-                    ForEach(shots) { shot in
-                        shotMarkerOrSegment(shot: shot, width: geo.size.width, height: geo.size.height)
-                            .id(shot.id)
-                    }
-
-                    // Playhead indicator
-                    playheadIfNeeded(width: geo.size.width, height: geo.size.height)
-                }
-                .padding(.horizontal, 12)
-
-                // Edge navigation buttons (no horizontal padding to sit at ends)
-                HStack {
-                    Button(action: { onPrev?(); UIImpactFeedbackGenerator(style: .light).impactOccurred() }) {
-                        Image(systemName: "chevron.left.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(TennisColors.courtGreen)
-                            .opacity(canDecrement ? 1.0 : 0.4)
-                    }
-                    .frame(width: 44, height: bandHeight)
-                    .contentShape(Rectangle())
-                    .disabled(!canDecrement)
-                    .accessibilityLabel("Previous shot")
-                    .accessibilityHint(canDecrement ? "Go to previous swing" : "Already at first swing")
-                    
-                    Spacer()
-                    
-                    Button(action: { onNext?(); UIImpactFeedbackGenerator(style: .light).impactOccurred() }) {
-                        Image(systemName: "chevron.right.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(TennisColors.courtGreen)
-                            .opacity(canIncrement ? 1.0 : 0.4)
-                    }
-                    .frame(width: 44, height: bandHeight)
-                    .contentShape(Rectangle())
-                    .disabled(!canIncrement)
-                    .accessibilityLabel("Next shot")
-                    .accessibilityHint(canIncrement ? "Go to next swing" : "Already at last swing")
-                }
-                .padding(.horizontal, 0)
-                .frame(height: bandHeight)
-                .allowsHitTesting(true)
+            // Baseline track with subtle visibility
+            Rectangle()
+                .fill(Color.white.opacity(0.05)) // Subtle track for both light and dark
+                .frame(height: 2)
+                .frame(maxWidth: .infinity)
+            
+            // Markers layer
+            ForEach(shots) { shot in
+                shotMarker(shot: shot, width: geo.size.width)
+                    .id(shot.id)
             }
             
-        
+            // Playhead indicator
+            if isPlaying {
+                playhead(width: geo.size.width)
+            }
+        }
         .frame(height: bandHeight)
+        .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 10)
+                .onChanged { value in
+                    dragLocation = value.location
+                    // Magnetic snapping during drag
+                    if let nearest = nearestShot(atX: value.location.x, totalWidth: geo.size.width) {
+                        let distance = abs(xPosition(for: nearest.time, width: geo.size.width) - value.location.x)
+                        if distance < 30 { // Snap radius
+                            select(nearest)
+                        }
+                    }
+                }
                 .onEnded { value in
-                    let x = value.location.x
-                    if let nearest = nearestShot(atX: x, totalWidth: geo.size.width) {
+                    dragLocation = nil
+                    if let nearest = nearestShot(atX: value.location.x, totalWidth: geo.size.width) {
                         select(nearest)
+                        // Don't auto-play on drag, only on tap
                     }
                 }
         )
@@ -155,180 +138,112 @@ struct TimelineStripEnhanced: View {
         }
     }
     
+    // MARK: - Shot Marker (Unified Design)
+    
     @ViewBuilder
-    private func shotMarkerOrSegment(shot: Shot, width: CGFloat, height: CGFloat) -> some View {
+    private func shotMarker(shot: Shot, width: CGFloat) -> some View {
         let isSelected = shot.id == selectedShotID
         let isExpanded = shot.id == expandedShotID
+        let xPos = xPosition(for: shot.time, width: width)
         
-        ZStack {
-            // Always show the marker dot
-            let xPos = xPosition(for: shot.time, width: width)
-            markerView(for: shot, selected: isSelected)
-                .position(x: max(44, min(width - 44, xPos)), y: height / 2)
-                .contentShape(Rectangle().inset(by: -minInteractiveRadius))
-                .onTapGesture {
-                    select(shot)
-                    // Auto-play segment when marker selected
-                    onPlaySegment?(shot)
-                }
-            
-            // Show segment ABOVE timeline (not replacing dot)
-            if isExpanded && isSelected {
-                segmentView(for: shot, width: width)
-                    .offset(y: -20)  // Position above the timeline
-                    .transition(.asymmetric(
-                        insertion: .scale.combined(with: .opacity),
-                        removal: .opacity
-                    ))
-            }
+        // Unified marker that expands in place
+        if isExpanded && isSelected {
+            // Expanded segment view
+            expandedSegmentView(for: shot, width: width)
+                .position(x: xPos, y: bandHeight / 2)
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.8).combined(with: .opacity),
+                    removal: .scale(scale: 0.8).combined(with: .opacity)
+                ))
+        } else {
+            // Compact dot marker
+            compactMarkerView(for: shot, selected: isSelected)
+                .position(x: xPos, y: bandHeight / 2)
         }
     }
     
     @ViewBuilder
-    private func playheadIfNeeded(width: CGFloat, height: CGFloat) -> some View {
-        if isPlaying,
-           let selected = shots.first(where: { $0.id == selectedShotID }),
-           currentTime >= selected.startTime,
-           currentTime <= selected.endTime {
-            let xPos = xPosition(for: currentTime, width: width)
-            playheadView()
-                .position(x: xPos, y: height / 2)
-                .allowsHitTesting(false)
-        }
-    }
-    
-    // MARK: - Segment View (Expanded State)
-    
-    @ViewBuilder
-    private func segmentView(for shot: Shot, width: CGFloat) -> some View {
-        let startX = xPosition(for: shot.startTime, width: width)
-        let endX = xPosition(for: shot.endTime, width: width)
-        let segmentWidth = max(44, endX - startX)  // Minimum width for visibility
-        
-        ZStack {
-            // Segment bar background
-            RoundedRectangle(cornerRadius: 8)
-                .fill(TennisColors.courtGreen.opacity(0.3))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(TennisColors.courtGreen, lineWidth: 2)
-                )
-                .frame(width: segmentWidth, height: 24)
-            
-            // Progress fill animation during playback
-            if isPlaying && currentTime >= shot.startTime && currentTime <= shot.endTime {
-                let progress = (currentTime - shot.startTime) / shot.duration
-                GeometryReader { innerGeo in
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(
-                            LinearGradient(
-                                colors: [TennisColors.courtGreen, TennisColors.courtGreen.opacity(0.7)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: innerGeo.size.width * CGFloat(progress))
-                        .animation(.linear(duration: 0.1), value: progress)
-                }
-                .frame(width: segmentWidth - 4, height: 20)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            
-            // Label
-            HStack(spacing: 4) {
-                if !isPlaying {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 10))
-                }
-                Text(shot.type.shortLabel)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-            }
-            .foregroundColor(.white)
-        }
-        .position(x: (startX + endX) / 2, y: bandHeight / 2)
-        .onTapGesture {
-            // Play this segment
+    private func compactMarkerView(for shot: Shot, selected: Bool) -> some View {
+        Button(action: {
+            select(shot)
             onPlaySegment?(shot)
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        }
-    }
-    
-    // MARK: - Marker View (Default State)
-    
-    @ViewBuilder
-    private func markerView(for shot: Shot, selected: Bool) -> some View {
-        let isPulsing = shot.id == pulsingMarkerID
-        let baseSize: CGFloat = selected ? 20 : 12
-        
-        ZStack {
-            // Pulse animation ring
-            if isPulsing {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }) {
+            ZStack {
                 Circle()
-                    .stroke(TennisColors.courtGreen, lineWidth: 2)
-                    .frame(width: baseSize + 20, height: baseSize + 20)
-                    .opacity(0)
-                    .modifier(PulseAnimation())
-            }
-            
-            Circle()
-                .fill(TennisColors.courtGreen.opacity(0.9))
-                .frame(width: baseSize, height: baseSize)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(selected ? 0.9 : 0.6), lineWidth: selected ? 2 : 1)
-                )
-                .shadow(color: .black.opacity(0.35), radius: 3, x: 0, y: 1)
-            
-            if selected {
+                    .fill(TennisColors.tennisGreen.opacity(selected ? 0.9 : 0.6))
+                    .frame(width: markerSize, height: markerSize)
+                
+                // Type abbreviation inside dot
                 Text(shot.type.shortLabel)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .font(.system(size: 7, weight: .bold, design: .monospaced))
                     .foregroundColor(.white)
             }
+            .scaleEffect(selected ? 1.2 : 1.0)
         }
-        .frame(minWidth: minInteractiveRadius * 2, minHeight: minInteractiveRadius * 2)
-        .scaleEffect(selected ? 1.2 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selected)
-        .accessibilityLabel("\(shot.type.accessibleName)")
-        .accessibilityHint("Double tap to play this segment")
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .buttonStyle(PlainButtonStyle())
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selected) // Standard .quick spring
     }
-    
-    // Pulse animation modifier
-    struct PulseAnimation: ViewModifier {
-        @State private var scale: CGFloat = 1.0
-        @State private var opacity: Double = 0.6
-        
-        func body(content: Content) -> some View {
-            content
-                .scaleEffect(scale)
-                .opacity(opacity)
-                .onAppear {
-                    withAnimation(
-                        .easeOut(duration: 1.0)
-                        .repeatForever(autoreverses: false)
-                    ) {
-                        scale = 1.5
-                        opacity = 0
-                    }
-                }
-        }
-    }
-
-    
-    // MARK: - Playhead View
     
     @ViewBuilder
-    private func playheadView() -> some View {
-        VStack(spacing: 0) {
-            Circle()
-                .fill(colorScheme == .dark ? Color.white : Color.black)
-                .frame(width: 8, height: 8)
-                .shadow(color: (colorScheme == .dark ? Color.black.opacity(0.5) : Color.black.opacity(0.2)), radius: 2)
-            
-            Rectangle()
-                .fill((colorScheme == .dark ? Color.white.opacity(0.8) : Color.black.opacity(0.6)))
-                .frame(width: 2, height: 20)
+    private func expandedSegmentView(for shot: Shot, width: CGFloat) -> some View {
+        let startX = xPosition(for: shot.startTime, width: width)
+        let endX = xPosition(for: shot.endTime, width: width)
+        let segmentWidth = max(60, endX - startX)  // Minimum width for readability
+        
+        Button(action: {
+            // Clicking the expanded segment replays that shot
+            onPlaySegment?(shot)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }) {
+            ZStack {
+                // Expanded background
+                RoundedRectangle(cornerRadius: expandedHeight / 2)
+                    .fill(TennisColors.tennisGreen)
+                    .frame(width: segmentWidth, height: expandedHeight)
+                
+                // Progress indicator during playback
+                if isPlaying && currentTime >= shot.startTime && currentTime <= shot.endTime {
+                    let progress = (currentTime - shot.startTime) / shot.duration
+                    GeometryReader { geo in
+                        RoundedRectangle(cornerRadius: expandedHeight / 2)
+                            .fill(TennisColors.tennisYellow.opacity(0.3))
+                            .frame(width: geo.size.width * CGFloat(progress))
+                    }
+                    .frame(width: segmentWidth - 4, height: expandedHeight - 4)
+                    .clipShape(RoundedRectangle(cornerRadius: (expandedHeight - 4) / 2))
+                }
+                
+                // Content - show play/replay icon based on playback state
+                HStack(spacing: 6) {
+                    Image(systemName: isPlaying && currentTime >= shot.startTime && currentTime <= shot.endTime ? "pause.fill" : "arrow.clockwise")
+                        .font(.system(size: 12, weight: .medium))
+                    
+                    Text(shot.type.shortLabel)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    
+                    Text(String(format: "%.1fs", shot.duration))
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .opacity(0.9)
+                }
+                .foregroundColor(.white)
+            }
         }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    // MARK: - Playhead (Simplified)
+    
+    @ViewBuilder
+    private func playhead(width: CGFloat) -> some View {
+        let xPos = xPosition(for: currentTime, width: width)
+        
+        Rectangle()
+            .fill(TennisColors.tennisYellow)
+            .frame(width: 2, height: bandHeight - 8)
+            .position(x: xPos, y: bandHeight / 2)
+            .allowsHitTesting(false)
+            .animation(.linear(duration: 0.1), value: currentTime)
     }
     
     // MARK: - Helper Methods
@@ -336,9 +251,8 @@ struct TimelineStripEnhanced: View {
     private func xPosition(for time: Double, width: CGFloat) -> CGFloat {
         guard duration > 0 else { return 0 }
         let clamped = max(0, min(time, duration))
-        // Use content width minus 88 with 44pt padding on both sides
-        let contentWidth = max(1, width - 88)
-        return CGFloat(clamped / duration) * contentWidth + 44
+        // Use full width for better space utilization
+        return CGFloat(clamped / duration) * width
     }
     
     private func nearestShot(atX x: CGFloat, totalWidth: CGFloat) -> Shot? {
@@ -351,14 +265,16 @@ struct TimelineStripEnhanced: View {
     }
     
     private func select(_ shot: Shot) {
-        selectedShotID = shot.id
-        currentTime = shot.time
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        
-        // Announce selection for VoiceOver
-        if UIAccessibility.isVoiceOverRunning {
-            let announcement = "\(shot.type.accessibleName) selected"
-            UIAccessibility.post(notification: .announcement, argument: announcement)
+        if selectedShotID != shot.id {
+            selectedShotID = shot.id
+            currentTime = shot.time
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            
+            // Announce selection for VoiceOver
+            if UIAccessibility.isVoiceOverRunning {
+                let announcement = "\(shot.type.accessibleName) selected"
+                UIAccessibility.post(notification: .announcement, argument: announcement)
+            }
         }
     }
     
@@ -387,54 +303,158 @@ struct TimelineStripEnhanced: View {
         return "Shot \(idx + 1) of \(shots.count), \(shot.type.accessibleName)"
     }
     
-    private var canDecrement: Bool {
-        guard let id = selectedShotID, let idx = shots.firstIndex(where: { $0.id == id }) else { return false }
+    // MARK: - Navigation Helpers
+    
+    private func navigatePrev() {
+        guard let currentIndex = shots.firstIndex(where: { $0.id == selectedShotID }),
+              currentIndex > 0 else { return }
+        
+        let prevShot = shots[currentIndex - 1]
+        select(prevShot)
+        onPlaySegment?(prevShot)
+    }
+    
+    private func navigateNext() {
+        guard let currentIndex = shots.firstIndex(where: { $0.id == selectedShotID }),
+              currentIndex < shots.count - 1 else { return }
+        
+        let nextShot = shots[currentIndex + 1]
+        select(nextShot)
+        onPlaySegment?(nextShot)
+    }
+    
+    private var canNavigatePrev: Bool {
+        guard let id = selectedShotID,
+              let idx = shots.firstIndex(where: { $0.id == id }) else { return false }
         return idx > 0
     }
     
-    private var canIncrement: Bool {
-        guard let id = selectedShotID, let idx = shots.firstIndex(where: { $0.id == id }) else { return false }
+    private var canNavigateNext: Bool {
+        guard let id = selectedShotID,
+              let idx = shots.firstIndex(where: { $0.id == id }) else { return false }
         return idx < shots.count - 1
+    }
+    
+    private var shouldShowNavigationHint: Bool {
+        // Show hint if average spacing between markers is less than 40pt
+        guard shots.count > 1, duration > 0 else { return false }
+        let averageSpacing = UIScreen.main.bounds.width / CGFloat(shots.count)
+        return averageSpacing < 40
+    }
+    
+    @ViewBuilder
+    private var navigationHintOverlay: some View {
+        if showNavigationHint {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left.chevron.right")
+                    .font(.system(size: 10))
+                Text("Use arrows for precise navigation")
+                    .font(.system(size: 11))
+            }
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(colorScheme == .dark ? Color.black.opacity(0.7) : Color.white.opacity(0.9))
+            )
+            .offset(y: -30)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
     }
 }
 
 // MARK: - Preview
 
-#Preview("Enhanced Timeline") {
+#Preview("Timeline with Navigation") {
     struct PreviewWrapper: View {
         @State private var shots = Array<Shot>.sampleShots(duration: 90)
+        @State private var denseShotsExample: [Shot] = {
+            let duration: Double = 30
+            let count = 15
+            return (0..<count).map { i in
+                let t = (Double(i) + 0.5) / Double(count) * duration
+                let type: ShotType = [ShotType.forehand, .backhand, .serve][i % 3]
+                let start = max(0, t - 0.45)
+                let end = min(duration, t + 0.45)
+                return Shot(time: t, type: type, issue: "", startTime: start, endTime: end)
+            }
+        }() // Dense timeline
         @State private var selectedID: UUID?
+        @State private var denseSelectedID: UUID?
         @State private var currentTime: Double = 0
         @State private var isPlaying: Bool = false
         
         var body: some View {
-            VStack(spacing: 20) {
-                TimelineStripEnhanced(
-                    duration: 90,
-                    shots: shots,
-                    selectedShotID: $selectedID,
-                    currentTime: $currentTime,
-                    isPlaying: $isPlaying
-                ) { shot in
-                    // Start playing the segment
-                    currentTime = shot.startTime
-                    isPlaying = true
+            VStack(spacing: 32) {
+                // Dense timeline example (shows navigation controls)
+                VStack(spacing: 16) {
+                    Text("Dense Timeline (15 shots in 30s)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    TimelineStripEnhanced(
+                        duration: 30,
+                        shots: denseShotsExample,
+                        selectedShotID: $denseSelectedID,
+                        currentTime: $currentTime,
+                        isPlaying: $isPlaying
+                    ) { shot in
+                        currentTime = shot.startTime
+                        // Auto-play disabled for demo
+                    }
+                    .background(Color(hex: "#1C1C1E").opacity(0.95))
+                    
+                    if let id = denseSelectedID,
+                       let shot = denseShotsExample.first(where: { $0.id == id }),
+                       let idx = denseShotsExample.firstIndex(where: { $0.id == id }) {
+                        Text("Shot \(idx + 1): \(shot.type.rawValue)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                 }
+                .preferredColorScheme(.dark)
                 .padding()
                 
-                HStack {
-                    Button(isPlaying ? "Pause" : "Play") {
-                        isPlaying.toggle()
+                // Normal timeline example
+                VStack(spacing: 16) {
+                    Text("Normal Timeline (6 shots in 90s)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    TimelineStripEnhanced(
+                        duration: 90,
+                        shots: shots,
+                        selectedShotID: $selectedID,
+                        currentTime: $currentTime,
+                        isPlaying: $isPlaying
+                    ) { shot in
+                        currentTime = shot.startTime
+                        isPlaying = true
                     }
-                    Text("Time: \(String(format: "%.1f", currentTime))s")
-                        .font(.system(.body, design: .monospaced))
+                    .background(Color.white.opacity(0.95))
                 }
+                .preferredColorScheme(.light)
+                .padding()
+                
+                // Instructions
+                VStack(spacing: 8) {
+                    Text("Navigation Methods:")
+                        .font(.caption.bold())
+                    Text("• Tap/drag timeline to select shots")
+                        .font(.caption)
+                    Text("• Use arrow buttons for precise navigation")
+                        .font(.caption)
+                    Text("• Arrows appear when shots are close together")
+                        .font(.caption)
+                }
+                .foregroundColor(.secondary)
                 .padding()
             }
-            .preferredColorScheme(.dark)
-            .background(Color.black)
+            .background(Color(UIColor.systemBackground))
             .onAppear {
                 selectedID = shots.first?.id
+                denseSelectedID = denseShotsExample.first?.id
             }
         }
     }

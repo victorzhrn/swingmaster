@@ -14,6 +14,7 @@ struct VideoPlayerView: UIViewControllerRepresentable {
     let url: URL
     @Binding var currentTime: Double
     @Binding var isPlaying: Bool
+    var showsControls: Bool = false
     
     // Segment playback support
     var segmentStart: Double? = nil
@@ -28,13 +29,14 @@ struct VideoPlayerView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let vc = AVPlayerViewController()
         vc.player = AVPlayer(url: url)
-        vc.showsPlaybackControls = true
+        vc.showsPlaybackControls = showsControls
         attachObserverIfNeeded(player: vc.player, coordinator: context.coordinator)
         return vc
     }
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
         let coordinator = context.coordinator
+        uiViewController.showsPlaybackControls = showsControls
 
         // Swap player if URL changed
         if let currentAsset = (uiViewController.player?.currentItem?.asset as? AVURLAsset), currentAsset.url != url {
