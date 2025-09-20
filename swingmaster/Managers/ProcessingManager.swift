@@ -98,7 +98,7 @@ final class ProcessingManager: ObservableObject {
                 
                 // Extract padded frames from the result
                 let paddedPoseFrames = res.segment.frames  // These are already padded from VideoProcessor
-                let paddedObjectFrames = res.objectFrames ?? []  // Get from AnalysisResult if available
+                let paddedObjectFrames = res.objectFrames
                 
                 let shot = Shot(
                     id: res.id,
@@ -107,8 +107,7 @@ final class ProcessingManager: ObservableObject {
                     issue: "",  // No issue until AI analysis
                     startTime: res.segment.startTime,
                     endTime: res.segment.endTime,
-                    validatedSwing: res.validatedSwing,  // Pass along for on-demand analysis
-                    segmentMetrics: res.segmentMetrics,  // Pass along for on-demand analysis
+                    segmentMetrics: res.segmentMetrics,  // Simple metrics for UI
                     paddedPoseFrames: paddedPoseFrames,  // Store padded pose frames
                     paddedObjectFrames: paddedObjectFrames  // Store padded object frames
                 )

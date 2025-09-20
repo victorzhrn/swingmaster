@@ -56,9 +56,8 @@ public struct Shot: Identifiable, Hashable, Codable {
     public let type: ShotType
     public let issue: String
     
-    // NOW PERSISTED - contains validated swing data
-    public let validatedSwing: ValidatedSwing?  // Store the validated swing for AI analysis
-    public let segmentMetrics: SegmentMetrics?  // Store the metrics for AI analysis
+    // Persisted minimal analytics for UI
+    public let segmentMetrics: SegmentMetrics?  // Simple metrics for UI
     
     // NEW: Padded frame data for trajectory computation (swing ± 0.5s)
     public let paddedPoseFrames: [PoseFrame]
@@ -66,7 +65,7 @@ public struct Shot: Identifiable, Hashable, Codable {
     
     enum CodingKeys: String, CodingKey {
         case id, time, startTime, endTime, type, issue
-        case validatedSwing, segmentMetrics
+        case segmentMetrics
         case paddedPoseFrames, paddedObjectFrames
     }
     
@@ -85,7 +84,6 @@ public struct Shot: Identifiable, Hashable, Codable {
                 issue: String, 
                 startTime: Double? = nil, 
                 endTime: Double? = nil, 
-                validatedSwing: ValidatedSwing? = nil, 
                 segmentMetrics: SegmentMetrics? = nil,
                 paddedPoseFrames: [PoseFrame]? = nil,
                 paddedObjectFrames: [ObjectDetectionFrame]? = nil) {
@@ -96,7 +94,6 @@ public struct Shot: Identifiable, Hashable, Codable {
         self.endTime = endTime ?? (time + 0.5)
         self.type = type
         self.issue = issue
-        self.validatedSwing = validatedSwing
         self.segmentMetrics = segmentMetrics
         self.paddedPoseFrames = paddedPoseFrames ?? []
         self.paddedObjectFrames = paddedObjectFrames ?? []
@@ -132,14 +129,13 @@ extension Array where Element == Shot {
             averageConfidence: 0.83
         )
         
-        return zip(times.indices, times).map { idx, t in
+        return times.enumerated().map { idx, t in
             // Create swings with realistic durations (0.8 to 1.2 seconds)
             let swingDuration = [0.9, 1.1, 0.8, 1.2][idx]  // Deterministic for previews
             let start = Swift.max(0, t - swingDuration/2)
             let end = Swift.min(duration, t + swingDuration/2)
             let shot = Shot(time: t, type: types[idx], issue: issues[idx], 
                           startTime: start, endTime: end,
-                          validatedSwing: nil,
                           segmentMetrics: sampleMetrics)
             return shot
         }

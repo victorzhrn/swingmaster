@@ -13,7 +13,7 @@ import os
 struct AnalysisView: View {
     let videoURL: URL?
     let duration: Double
-    @State var shots: [Shot]  // Changed from let to @State for updates
+    let shots: [Shot]
 
     @State private var selectedShotID: Shot.ID?
     @State private var currentTime: Double = 0
@@ -161,75 +161,7 @@ struct AnalysisView: View {
         }
     }
     
-    private var persistentVideoControls: some View {
-        HStack(spacing: 16) {
-            // Play/Pause (always visible)
-            Button(action: togglePlayback) {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundColor(.white.opacity(0.9))
-                    .background(
-                        Circle()
-                            .fill(Color.black.opacity(0.3))
-                            .blur(radius: 10)
-                    )
-            }
-            
-            // Current segment info (if playing)
-            if let segment = playingSegment {
-                Text(segment.type.shortLabel)
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(segment.type.accentColor.opacity(0.8))
-                    )
-                    .foregroundColor(.white)
-            }
-        }
-        .padding(12)
-    }
-
-    private var currentShotIndex: Int {
-        if let id = selectedShotID, let idx = shots.firstIndex(where: { $0.id == id }) {
-            return idx
-        }
-        return 0
-    }
-
-    private var shotNavigator: some View {
-        HStack {
-            Button(action: selectPrev) {
-                Image(systemName: "chevron.left.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(.white.opacity(0.85))
-            }
-            
-            Spacer()
-            
-            Text("Shot \(currentShotIndex + 1) of \(shots.count)")
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.95))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.black.opacity(0.25))
-                .clipShape(Capsule())
-            
-            Spacer()
-            
-            Button(action: selectNext) {
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(.white.opacity(0.85))
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .padding(.horizontal, 16)
-    }
+    
 
     
 
@@ -253,15 +185,7 @@ struct AnalysisView: View {
         isPlaying = true
     }
     
-    private func replaySegment() {
-        if let segment = playingSegment {
-            logger.log("[UI] replaySegment start=\(segment.startTime, privacy: .public) end=\(segment.endTime, privacy: .public)")
-            currentTime = segment.startTime
-            isPlaying = true
-        } else if let id = selectedShotID, let shot = shots.first(where: { $0.id == id }) {
-            playSegment(shot)
-        }
-    }
+    
 
     private func selectPrev() {
         guard let id = selectedShotID, let idx = shots.firstIndex(where: { $0.id == id }) else { return }

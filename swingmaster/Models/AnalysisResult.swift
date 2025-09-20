@@ -12,43 +12,25 @@ public struct AnalysisResult: Sendable, Identifiable {
     public var id: UUID
     public var segment: SwingSegment
     public var swingType: ShotType
-    public var keyFrames: [KeyFrame]
     
-    // Store these for on-demand AI analysis
-    public var validatedSwing: ValidatedSwing?
+    // Lightweight metrics and detection frames for UI/trajectory use
     public var segmentMetrics: SegmentMetrics?
-    public var objectFrames: [ObjectDetectionFrame]?  // NEW: Store object detection frames
+    public var objectFrames: [ObjectDetectionFrame]
 
     public init(id: UUID = UUID(),
                 segment: SwingSegment,
                 swingType: ShotType,
-                keyFrames: [KeyFrame],
-                validatedSwing: ValidatedSwing? = nil,
                 segmentMetrics: SegmentMetrics? = nil,
-                objectFrames: [ObjectDetectionFrame]? = nil) {
+                objectFrames: [ObjectDetectionFrame] = []) {
         self.id = id
         self.segment = segment
         self.swingType = swingType
-        self.keyFrames = keyFrames
-        self.validatedSwing = validatedSwing
         self.segmentMetrics = segmentMetrics
         self.objectFrames = objectFrames
     }
 }
 
-/// Simplified key frame reference used for tracking important moments
-public struct KeyFrame: Sendable {
-    public let type: KeyFrameType
-    public let frameIndex: Int
-    public let timestamp: TimeInterval
-
-    public init(type: KeyFrameType, frameIndex: Int, timestamp: TimeInterval) {
-        self.type = type
-        self.frameIndex = frameIndex
-        self.timestamp = timestamp
-    }
-}
-
+/// Key frame type used by validation helpers (kept for non-AI local use)
 public enum KeyFrameType: String, Sendable {
     case preparation = "Preparation"
     case backswing = "Backswing"

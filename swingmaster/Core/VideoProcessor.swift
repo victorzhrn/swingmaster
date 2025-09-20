@@ -154,13 +154,11 @@ public final class VideoProcessor: ObservableObject {
                 segment: SwingSegment(
                     startTime: swing.frames.first?.timestamp ?? 0,
                     endTime: swing.frames.last?.timestamp ?? 0,
-                    frames: paddedPoses  // Use padded frames in segment
+                    frames: paddedPoses
                 ),
                 swingType: swing.type,
-                keyFrames: [],      // Can populate from swing.keyFrameIndices if needed
-                validatedSwing: swing,  // Store for on-demand analysis
-                segmentMetrics: segmentMetrics,  // Store for on-demand analysis
-                objectFrames: paddedObjects  // Store padded object frames
+                segmentMetrics: segmentMetrics,
+                objectFrames: paddedObjects
             )
             results.append(result)
             let s = result.segment.startTime
@@ -216,10 +214,8 @@ public final class VideoProcessor: ObservableObject {
                     frames: swing.frames
                 ),
                 swingType: swing.type,
-                keyFrames: [],      // Can populate from swing.keyFrameIndices if needed
-                validatedSwing: swing,  // Store for on-demand analysis
-                segmentMetrics: segmentMetrics,  // Store for on-demand analysis
-                objectFrames: emptyObjectFrames  // Empty for live sessions
+                segmentMetrics: segmentMetrics,
+                objectFrames: emptyObjectFrames
             )
             results.append(result)
             let s = result.segment.startTime
