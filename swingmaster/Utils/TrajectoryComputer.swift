@@ -26,7 +26,30 @@ struct TrajectoryOptions {
     let maxGapSeconds: Double
     let smooth: Bool
     let smoothingWindow: Int
-    static let `default` = TrajectoryOptions(fillGaps: true, maxGapSeconds: 0.33, smooth: true, smoothingWindow: 3)
+    /// Select the smoothing algorithm to apply to trajectories.
+    enum SmoothingMethod {
+        case none
+        case savitzkyGolay(polyOrder: Int)
+    }
+
+    /// Select the interpolation method for filling short gaps.
+    enum GapMethod {
+        case linear
+        case cubicSpline
+    }
+
+    let smoothingMethod: SmoothingMethod
+    let gapMethod: GapMethod
+
+    /// Defaults tuned for 30 FPS: SG window 5 (~0.17s) with quadratic fit, cubic gap fill.
+    static let `default` = TrajectoryOptions(
+        fillGaps: true,
+        maxGapSeconds: 0.33,
+        smooth: true,
+        smoothingWindow: 7,
+        smoothingMethod: .savitzkyGolay(polyOrder: 2),
+        gapMethod: .cubicSpline
+    )
 }
 
 struct TrajectoryPoint: Equatable {
@@ -66,10 +89,20 @@ enum TrajectoryComputer {
         if options.fillGaps, points.count > 1 {
             let interval = estimateFrameInterval(points: points) ?? (1.0 / 30.0)
             let maxGapFrames = Int(round(options.maxGapSeconds / interval))
-            points = fillGaps(points, maxGapFrames: maxGapFrames, frameInterval: interval)
+            switch options.gapMethod {
+            case .linear:
+                points = fillGapsLinear(points, maxGapFrames: maxGapFrames, frameInterval: interval)
+            case .cubicSpline:
+                points = fillGapsCubic(points, maxGapFrames: maxGapFrames, frameInterval: interval)
+            }
         }
         if options.smooth, points.count > options.smoothingWindow {
-            points = smooth(points, windowSize: options.smoothingWindow)
+            switch options.smoothingMethod {
+            case .none:
+                break
+            case .savitzkyGolay(let polyOrder):
+                points = smoothSavitzkyGolay(points, windowSize: options.smoothingWindow, polyOrder: polyOrder)
+            }
         }
         return points
     }
@@ -123,7 +156,8 @@ enum TrajectoryComputer {
         if sorted.count % 2 == 0 { return (sorted[mid - 1] + sorted[mid]) / 2.0 } else { return sorted[mid] }
     }
 
-    static func fillGaps(_ pts: [TrajectoryPoint], maxGapFrames: Int, frameInterval: Double) -> [TrajectoryPoint] {
+    /// Linear gap filling preserving timestamps; maintains existing behavior for compatibility.
+    static func fillGapsLinear(_ pts: [TrajectoryPoint], maxGapFrames: Int, frameInterval: Double) -> [TrajectoryPoint] {
         var out: [TrajectoryPoint] = []
         guard let first = pts.first else { return pts }
         out.append(first)
@@ -150,17 +184,157 @@ enum TrajectoryComputer {
         return out
     }
 
-    static func smooth(_ pts: [TrajectoryPoint], windowSize: Int) -> [TrajectoryPoint] {
-        guard pts.count > windowSize else { return pts }
+    /// Cubic (Hermite/Catmull-Rom style) interpolation for short gaps using neighboring keyframes
+    /// to estimate tangents. Produces natural curved paths for racket/ball and joints.
+    static func fillGapsCubic(_ pts: [TrajectoryPoint], maxGapFrames: Int, frameInterval: Double) -> [TrajectoryPoint] {
         var out: [TrajectoryPoint] = []
-        for i in 0..<pts.count {
-            let start = max(0, i - windowSize/2)
-            let end = min(pts.count - 1, i + windowSize/2)
-            var sx: Float = 0, sy: Float = 0, c: Float = 0
-            for j in start...end { sx += pts[j].x; sy += pts[j].y; c += 1 }
-            out.append(TrajectoryPoint(x: sx / c, y: sy / c, timestamp: pts[i].timestamp, confidence: pts[i].confidence, isInterpolated: pts[i].isInterpolated))
+        guard !pts.isEmpty else { return pts }
+        out.append(pts[0])
+        for i in 1..<pts.count {
+            let prev = pts[i-1]
+            let curr = pts[i]
+            let timeDiff = curr.timestamp - prev.timestamp
+            let gap = Int((timeDiff / frameInterval).rounded()) - 1
+            if gap > 0 && gap <= maxGapFrames {
+                let prev2: TrajectoryPoint? = (i-2) >= 0 ? pts[i-2] : nil
+                let next2: TrajectoryPoint? = (i+1) < pts.count ? pts[i+1] : nil
+                // Tangent estimates for Catmull-Rom: m0 ~ (curr - prev2)/2, m1 ~ (next2 - prev)/2
+                let m0x: Float = {
+                    if let p2 = prev2 { return (curr.x - p2.x) * 0.5 } else { return (curr.x - prev.x) }
+                }()
+                let m0y: Float = {
+                    if let p2 = prev2 { return (curr.y - p2.y) * 0.5 } else { return (curr.y - prev.y) }
+                }()
+                let m1x: Float = {
+                    if let n2 = next2 { return (n2.x - prev.x) * 0.5 } else { return (curr.x - prev.x) }
+                }()
+                let m1y: Float = {
+                    if let n2 = next2 { return (n2.y - prev.y) * 0.5 } else { return (curr.y - prev.y) }
+                }()
+
+                for j in 1...gap {
+                    let u = Float(j) / Float(gap + 1) // 0..1
+                    let u2 = u * u
+                    let u3 = u2 * u
+                    // Cubic Hermite basis
+                    let h00 = 2*u3 - 3*u2 + 1
+                    let h10 = u3 - 2*u2 + u
+                    let h01 = -2*u3 + 3*u2
+                    let h11 = u3 - u2
+                    let ix = h00 * prev.x + h10 * m0x + h01 * curr.x + h11 * m1x
+                    let iy = h00 * prev.y + h10 * m0y + h01 * curr.y + h11 * m1y
+                    let interp = TrajectoryPoint(
+                        x: ix,
+                        y: iy,
+                        timestamp: prev.timestamp + Double(j) * frameInterval,
+                        confidence: min(prev.confidence, curr.confidence) * 0.7,
+                        isInterpolated: true
+                    )
+                    out.append(interp)
+                }
+            }
+            out.append(curr)
         }
         return out
+    }
+
+    /// Savitzky–Golay smoothing via local polynomial regression around each point.
+    /// - Parameters:
+    ///   - pts: Input trajectory points
+    ///   - windowSize: Odd number of samples in window (e.g., 5 or 7)
+    ///   - polyOrder: Polynomial order (e.g., 2)
+    /// - Returns: Smoothed trajectory preserving sharp features
+    static func smoothSavitzkyGolay(_ pts: [TrajectoryPoint], windowSize: Int, polyOrder: Int) -> [TrajectoryPoint] {
+        guard pts.count > windowSize, windowSize % 2 == 1, polyOrder >= 1, polyOrder < windowSize else { return pts }
+        var out: [TrajectoryPoint] = []
+        let half = windowSize / 2
+
+        for i in 0..<pts.count {
+            let start = max(0, i - half)
+            let end = min(pts.count - 1, i + half)
+            // Build t offsets centered at i (not necessarily symmetric at edges)
+            var tValues: [Double] = []
+            tValues.reserveCapacity(end - start + 1)
+            for j in start...end { tValues.append(Double(j - i)) }
+            let count = tValues.count
+            // X and Y series over window
+            var xVals: [Double] = []
+            var yVals: [Double] = []
+            xVals.reserveCapacity(count)
+            yVals.reserveCapacity(count)
+            for j in start...end { xVals.append(Double(pts[j].x)); yVals.append(Double(pts[j].y)) }
+
+            // Compute intercepts via normal equations; if solver fails, fallback to moving average
+            if let x0 = solveLeastSquaresIntercept(t: tValues, y: xVals, polyOrder: polyOrder),
+               let y0 = solveLeastSquaresIntercept(t: tValues, y: yVals, polyOrder: polyOrder) {
+                out.append(TrajectoryPoint(x: Float(x0), y: Float(y0), timestamp: pts[i].timestamp, confidence: pts[i].confidence, isInterpolated: pts[i].isInterpolated))
+            } else {
+                // Fallback: keep original point if regression fails
+                out.append(pts[i])
+            }
+        }
+        return out
+    }
+
+    /// Solve for intercept (value at t=0) of polynomial least squares fit of given order.
+    /// Uses normal equations and Gaussian elimination. Small matrices only (order <= 5 recommended).
+    private static func solveLeastSquaresIntercept(t: [Double], y: [Double], polyOrder: Int) -> Double? {
+        let n = polyOrder + 1
+        guard t.count == y.count, t.count >= n else { return nil }
+
+        // Build ATA (n x n) and ATy (n)
+        var ata = Array(repeating: Array(repeating: 0.0, count: n), count: n)
+        var aty = Array(repeating: 0.0, count: n)
+        for idx in 0..<t.count {
+            var tpowers = Array(repeating: 1.0, count: n)
+            for p in 1..<n { tpowers[p] = tpowers[p-1] * t[idx] }
+            for r in 0..<n {
+                aty[r] += tpowers[r] * y[idx]
+                for c in 0..<n { ata[r][c] += tpowers[r] * tpowers[c] }
+            }
+        }
+
+        // Solve ata * beta = aty
+        guard let beta = gaussianEliminationSolve(a: ata, b: aty) else { return nil }
+        // Intercept is beta[0] (value at t=0)
+        return beta.first
+    }
+
+    /// Simple Gaussian elimination with partial pivoting for small dense systems.
+    private static func gaussianEliminationSolve(a: [[Double]], b: [Double]) -> [Double]? {
+        let n = b.count
+        guard a.count == n, a[0].count == n else { return nil }
+        var A = a
+        var B = b
+        // Forward elimination
+        for k in 0..<n {
+            // Pivot
+            var pivot = k
+            var maxVal = abs(A[k][k])
+            for r in (k+1)..<n {
+                if abs(A[r][k]) > maxVal { maxVal = abs(A[r][k]); pivot = r }
+            }
+            if maxVal == 0 { return nil }
+            if pivot != k { A.swapAt(k, pivot); B.swapAt(k, pivot) }
+            // Eliminate
+            let akk = A[k][k]
+            for r in (k+1)..<n {
+                let factor = A[r][k] / akk
+                if factor == 0 { continue }
+                for c in k..<n { A[r][c] -= factor * A[k][c] }
+                B[r] -= factor * B[k]
+            }
+        }
+        // Back substitution
+        var x = Array(repeating: 0.0, count: n)
+        for i in stride(from: n-1, through: 0, by: -1) {
+            var sum = B[i]
+            for j in (i+1)..<n { sum -= A[i][j] * x[j] }
+            let diag = A[i][i]
+            if diag == 0 { return nil }
+            x[i] = sum / diag
+        }
+        return x
     }
 }
 
