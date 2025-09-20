@@ -31,7 +31,7 @@ public struct FrameMetrics: Sendable {
 }
 
 /// Summary metrics for a contiguous swing segment.
-public struct SegmentMetrics: Sendable {
+public struct SegmentMetrics: Sendable, Codable {
     public let peakAngularVelocity: Float
     public let peakLinearVelocity: Float
     public let contactPoint: CGPoint

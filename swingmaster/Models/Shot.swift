@@ -61,8 +61,8 @@ struct Shot: Identifiable, Hashable, Codable {
     var segmentMetrics: SegmentMetrics? = nil  // Store the metrics for AI analysis
     
     enum CodingKeys: String, CodingKey {
-        case id, time, startTime, endTime, type, issue
-        // Explicitly exclude validatedSwing and segmentMetrics from encoding/decoding
+        case id, time, startTime, endTime, type, issue, segmentMetrics
+        // Explicitly exclude validatedSwing from encoding/decoding
     }
     
     // Custom Hashable to exclude transient fields
