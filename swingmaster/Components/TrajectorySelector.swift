@@ -10,6 +10,7 @@ import UIKit
 
 struct TrajectorySelector: View {
     @Binding var enabledTrajectories: Set<TrajectoryType>
+    @Binding var isComparing: Bool
     
     // Store the last selected trajectory for better UX
     @AppStorage("lastSelectedTrajectory") private var lastSelectedTrajectory: String = "racket"
@@ -21,16 +22,12 @@ struct TrajectorySelector: View {
     enum TrajectoryOption: String, CaseIterable {
         case racket = "Racket"
         case wrist = "Wrist"
-        case elbow = "Elbow"
-        case shoulder = "Shoulder"
         case off = "Off"
         
         var trajectoryType: TrajectoryType? {
             switch self {
             case .racket: return .racketCenter
             case .wrist: return .rightWrist
-            case .elbow: return .rightElbow
-            case .shoulder: return .rightShoulder
             case .off: return nil
             }
         }
@@ -39,7 +36,7 @@ struct TrajectorySelector: View {
             // Use a consistent tennis green for all trajectory types
             // Creates a more cohesive, professional look
             switch self {
-            case .racket, .wrist, .elbow, .shoulder: 
+            case .racket, .wrist: 
                 return TennisColors.tennisGreen
             case .off: 
                 return .clear
@@ -48,23 +45,28 @@ struct TrajectorySelector: View {
     }
     
     var body: some View {
-        // Simplified segmented control for unified container
-        HStack(spacing: 2) { // Small spacing for visual separation
-            ForEach(TrajectoryOption.allCases, id: \.self) { option in
-                SegmentButton(
-                    title: option.rawValue,
-                    isSelected: selectedOption == option,
-                    color: option.color,
-                    action: {
-                        selectOption(option)
-                    }
-                )
+        HStack(spacing: Spacing.small) { // Use design token: 8pt
+            // Left: Compressed trajectory selector
+            HStack(spacing: 2) {
+                ForEach(TrajectoryOption.allCases, id: \.self) { option in
+                    SegmentButton(
+                        title: option.rawValue,
+                        isSelected: selectedOption == option,
+                        color: option.color,
+                        action: { selectOption(option) }
+                    )
+                }
             }
+            .frame(maxWidth: 160) // Reduced to fit compare toggle
+            
+            Spacer()
+            
+            // Right: Compare toggle
+            CompareToggle(isComparing: $isComparing)
         }
-        .padding(.horizontal, 4)
-        .frame(height: 36) // More compact for integration
+        .padding(.horizontal, Spacing.micro) // 4pt
+        .frame(height: 36)
         .background(
-            // Subtle background for segmented control
             RoundedRectangle(cornerRadius: 18)
                 .fill(Color.white.opacity(0.05))
         )

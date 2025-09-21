@@ -27,6 +27,7 @@ struct AnalysisView: View {
     @State private var trajectoryOptions: TrajectoryOptions = .default
     @State private var videoAspectRatio: CGFloat = 16.0/9.0
     @State private var trajectoryCache: [UUID: [TrajectoryType: [TrajectoryPoint]]] = [:]
+    @State private var isComparing: Bool = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -36,14 +37,44 @@ struct AnalysisView: View {
                 
                 // Overlay Layer 1: Trajectory visualization
                 if let shot = shots.first(where: { $0.id == selectedShotID }) {
+                    if isComparing {
+                        // Trajectory only on left (user) side
+                        HStack(spacing: 1) { // Match the video spacing
+                            TrajectoryOverlay(
+                                trajectoriesByType: trajectoryCache[shot.id] ?? [:],
+                                enabledTrajectories: enabledTrajectories,
+                                currentTime: currentShotRelativeTime(shot: shot),
+                                shotDuration: max(0, shot.endTime - shot.startTime),
+                                videoAspectRatio: videoAspectRatio // Keep original aspect ratio
+                            )
+                            .frame(width: geometry.size.width / 2)
+                            .clipped() // Match video clipping
+                            .allowsHitTesting(false)
+                            
+                            Spacer()
+                                .frame(width: geometry.size.width / 2)
+                        }
+                    } else {
+                        // Original full-width trajectory
+                        TrajectoryOverlay(
+                            trajectoriesByType: trajectoryCache[shot.id] ?? [:],
+                            enabledTrajectories: enabledTrajectories,
+                            currentTime: currentShotRelativeTime(shot: shot),
+                            shotDuration: max(0, shot.endTime - shot.startTime),
+                            videoAspectRatio: videoAspectRatio
+                        )
+                        .allowsHitTesting(false)
+                    }
+                    
+                    // Task handlers remain the same
                     TrajectoryOverlay(
-                        trajectoriesByType: trajectoryCache[shot.id] ?? [:],
-                        enabledTrajectories: enabledTrajectories,
-                        currentTime: currentShotRelativeTime(shot: shot),
-                        shotDuration: max(0, shot.endTime - shot.startTime),
-                        videoAspectRatio: videoAspectRatio
+                        trajectoriesByType: [:],
+                        enabledTrajectories: [],
+                        currentTime: 0,
+                        shotDuration: 0,
+                        videoAspectRatio: 1
                     )
-                    .allowsHitTesting(false)
+                    .opacity(0)
                     .task(id: enabledTrajectories) { 
                         if let url = videoURL {
                             await precomputeIfNeeded(for: shot, videoURL: url) 
@@ -71,10 +102,11 @@ struct AnalysisView: View {
                     VStack(spacing: 0) {
                         // Trajectory selector row
                         TrajectorySelector(
-                            enabledTrajectories: $enabledTrajectories
+                            enabledTrajectories: $enabledTrajectories,
+                            isComparing: $isComparing
                         )
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, Spacing.small) // 8pt per design system
+                        .padding(.vertical, Spacing.small)
                         
                         // Subtle divider
                         Rectangle()
@@ -125,40 +157,128 @@ struct AnalysisView: View {
     
     @ViewBuilder
     private func videoLayer(geometry: GeometryProxy) -> some View {
-        Group {
-            if let url = videoURL {
-                VideoPlayerView(
-                    url: url,
-                    currentTime: $currentTime,
-                    isPlaying: $isPlaying,
-                    showsControls: false,
-                    segmentStart: playingSegment?.startTime,
-                    segmentEnd: playingSegment?.endTime,
-                    onSegmentComplete: {
-                        if let seg = playingSegment { currentTime = seg.endTime }
-                        isPlaying = false
-                        playingSegment = nil
-                    }
-                )
-                .accessibilityLabel("Video player")
-            } else {
-                // Full-screen placeholder
-                ZStack {
-                    Color.black
-                    VStack(spacing: 12) {
-                        Image(systemName: "play.rectangle.fill")
-                            .font(.system(size: 48))
-                            .foregroundColor(.white.opacity(0.3))
-                        Text(timeString(currentTime) + " / " + timeString(duration))
-                            .font(.system(size: 16, weight: .medium, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
+        if isComparing {
+            // Split view with 1pt gap
+            HStack(spacing: 1) {
+                // User video (left) - narrower aspect
+                Group {
+                    if let url = videoURL {
+                        VideoPlayerView(
+                            url: url,
+                            currentTime: $currentTime,
+                            isPlaying: $isPlaying,
+                            showsControls: false,
+                            segmentStart: playingSegment?.startTime,
+                            segmentEnd: playingSegment?.endTime,
+                            onSegmentComplete: {
+                                if let seg = playingSegment { 
+                                    currentTime = seg.endTime 
+                                }
+                                isPlaying = false
+                                playingSegment = nil
+                            }
+                        )
+                    } else {
+                        videoPlaceholder()
                     }
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Video player")
-                .accessibilityValue("Time \(timeString(currentTime)) of \(timeString(duration))")
+                .frame(width: geometry.size.width / 2)
+                .clipped() // Handle narrower aspect ratio
+                .overlay(userVideoLabel, alignment: .topLeading)
+                
+                // Pro video (right) - local file
+                if let proURL = Bundle.main.url(
+                    forResource: "DjokvicForhand", 
+                    withExtension: "mov"
+                ) {
+                    VideoPlayerView(
+                        url: proURL,
+                        currentTime: .constant(0),
+                        isPlaying: $isPlaying, // Sync play/pause
+                        showsControls: false
+                    )
+                    .frame(width: geometry.size.width / 2)
+                    .clipped() // Handle narrower aspect ratio
+                    .overlay(proVideoLabel, alignment: .topLeading)
+                } else {
+                    Rectangle()
+                        .fill(Color.black)
+                        .overlay(
+                            VStack(spacing: Spacing.small) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.system(size: 28)) // .large icon
+                                    .foregroundColor(TennisColors.tennisYellow)
+                                Text("Pro video not found")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                        )
+                        .frame(width: geometry.size.width / 2)
+                }
+            }
+        } else {
+            // Original full-screen video (existing code)
+            Group {
+                if let url = videoURL {
+                    VideoPlayerView(
+                        url: url,
+                        currentTime: $currentTime,
+                        isPlaying: $isPlaying,
+                        showsControls: false,
+                        segmentStart: playingSegment?.startTime,
+                        segmentEnd: playingSegment?.endTime,
+                        onSegmentComplete: {
+                            if let seg = playingSegment { 
+                                currentTime = seg.endTime 
+                            }
+                            isPlaying = false
+                            playingSegment = nil
+                        }
+                    )
+                    .accessibilityLabel("Video player")
+                } else {
+                    videoPlaceholder()
+                }
             }
         }
+    }
+    
+    // Label overlays using design system
+    private var userVideoLabel: some View {
+        Text("YOU")
+            .font(.system(size: 11, weight: .bold)) // .caption2 bold
+            .foregroundColor(.white)
+            .padding(Spacing.micro) // 4pt
+            .background(Color.black.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .padding(Spacing.small) // 8pt margin
+    }
+    
+    private var proVideoLabel: some View {
+        Text("PRO")
+            .font(.system(size: 11, weight: .bold)) // .caption2 bold
+            .foregroundColor(.white)
+            .padding(Spacing.micro) // 4pt
+            .background(Color.black.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .padding(Spacing.small) // 8pt margin
+    }
+    
+    private func videoPlaceholder() -> some View {
+        ZStack {
+            Color.black
+            VStack(spacing: Spacing.small) { // 8pt
+                Image(systemName: "play.rectangle.fill")
+                    .font(.system(size: 48)) // .xlarge icon
+                    .foregroundColor(.white.opacity(0.3))
+                Text(timeString(currentTime) + " / " + timeString(duration))
+                    .font(.system(size: 16, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Video player")
+        .accessibilityValue("Time \(timeString(currentTime)) of \(timeString(duration))")
     }
     
     
