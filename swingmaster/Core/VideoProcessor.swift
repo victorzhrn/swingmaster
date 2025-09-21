@@ -9,6 +9,7 @@ import Foundation
 import os
 import Vision
 import AVFoundation
+import ImageIO
 
 @MainActor
 public final class VideoProcessor: ObservableObject {
@@ -39,8 +40,12 @@ public final class VideoProcessor: ObservableObject {
         let videoFPS = getVideoFPS(from: url) ?? 10.0
         logger.log("[File] Using video FPS: \(videoFPS, format: .fixed(precision: 1))")
         
-        // Extract poses first
-        let poseFrames = await poseProcessor.processVideoFile(url, targetFPS: videoFPS) { [weak self] p in
+        // Determine the correct orientation for the video
+        let orientation = getVideoOrientation(from: url)
+        logger.log("[File] Using orientation: \(orientation.rawValue)")
+        
+        // Extract poses first with the correct orientation
+        let poseFrames = await poseProcessor.processVideoFile(url, targetFPS: videoFPS, orientation: orientation) { [weak self] p in
             Task { @MainActor in self?.state = .extractingPoses(progress: p * 0.5) } // First 50% of progress
         }
 
@@ -55,12 +60,12 @@ public final class VideoProcessor: ObservableObject {
         // Update state for object detection phase
         await MainActor.run { self.state = .extractingPoses(progress: 0.5) }
         
-        // Run object detection on the full video timespan
+        // Run object detection on the full video timespan with the same orientation
         let objectFrames = await objectDetector.detectObjects(
             in: url,
             start: startTime,
             end: endTime,
-            orientation: .right,
+            orientation: orientation,
             confidenceThreshold: 0.3
         )
         
@@ -281,6 +286,43 @@ public final class VideoProcessor: ObservableObject {
         return fps > 0 ? fps : nil
     }
     
+    private func getVideoOrientation(from url: URL) -> CGImagePropertyOrientation {
+        let asset = AVAsset(url: url)
+        guard let videoTrack = asset.tracks(withMediaType: .video).first else {
+            logger.warning("[File] No video track found, using default orientation")
+            return .right
+        }
+        
+        let transform = videoTrack.preferredTransform
+        let size = videoTrack.naturalSize
+        
+        // Determine orientation based on the transform
+        // This handles videos recorded in different orientations
+        if transform.a == 0 && transform.b == 1.0 && transform.c == -1.0 && transform.d == 0 {
+            // Portrait
+            return .right
+        } else if transform.a == 0 && transform.b == -1.0 && transform.c == 1.0 && transform.d == 0 {
+            // Portrait upside down
+            return .left
+        } else if transform.a == 1.0 && transform.b == 0 && transform.c == 0 && transform.d == 1.0 {
+            // Landscape right
+            return .up
+        } else if transform.a == -1.0 && transform.b == 0 && transform.c == 0 && transform.d == -1.0 {
+            // Landscape left
+            return .down
+        } else {
+            // Default to .right for portrait videos (most common on iOS)
+            logger.log("[File] Transform: a=\(transform.a) b=\(transform.b) c=\(transform.c) d=\(transform.d) tx=\(transform.tx) ty=\(transform.ty)")
+            logger.log("[File] Natural size: \(size.width)x\(size.height)")
+            
+            // Additional heuristic: check if width > height for landscape
+            if size.width > size.height {
+                return .up  // Landscape
+            } else {
+                return .right  // Portrait
+            }
+        }
+    }
 }
 
 

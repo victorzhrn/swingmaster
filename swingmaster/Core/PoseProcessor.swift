@@ -21,12 +21,15 @@ final class PoseProcessor {
     }
 
     /// Process a single frame and return a PoseFrame if a person is detected.
-    /// - Parameter pixelBuffer: Source frame pixel buffer (BGRA recommended).
+    /// - Parameters:
+    ///   - pixelBuffer: Source frame pixel buffer (BGRA recommended).
+    ///   - timestamp: Frame timestamp
+    ///   - orientation: Image orientation for Vision processing (default: .right)
     /// - Returns: PoseFrame or nil if no valid observation.
-    func processFrame(_ pixelBuffer: CVPixelBuffer, timestamp: TimeInterval = CACurrentMediaTime()) async -> PoseFrame? {
+    func processFrame(_ pixelBuffer: CVPixelBuffer, timestamp: TimeInterval = CACurrentMediaTime(), orientation: CGImagePropertyOrientation = .right) async -> PoseFrame? {
         await withCheckedContinuation { continuation in
             visionQueue.async {
-                let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+                let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
                 do {
                     try handler.perform([self.request])
                     guard let observation = (self.request.results as? [VNHumanBodyPoseObservation])?.first else {
@@ -43,9 +46,13 @@ final class PoseProcessor {
     }
 
     /// Process a video file at a reduced sampling rate (~10 fps) to control cost.
-    /// - Parameter progress: Optional callback reporting 0..1 extraction progress.
+    /// - Parameters:
+    ///   - url: Video file URL
+    ///   - targetFPS: Target frames per second for extraction
+    ///   - orientation: Image orientation for Vision processing (default: .right)
+    ///   - progress: Optional callback reporting 0..1 extraction progress
     /// - Returns: Array of PoseFrame in chronological order.
-    func processVideoFile(_ url: URL, targetFPS: Double = 10.0, progress: ((Float) -> Void)? = nil) async -> [PoseFrame] {
+    func processVideoFile(_ url: URL, targetFPS: Double = 10.0, orientation: CGImagePropertyOrientation = .right, progress: ((Float) -> Void)? = nil) async -> [PoseFrame] {
         var frames: [PoseFrame] = []
 
         let asset = AVAsset(url: url)
@@ -74,7 +81,7 @@ final class PoseProcessor {
                 guard let pixelBuffer = CMSampleBufferGetImageBuffer(sample) else { continue }
                 let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                 let ts = CMTimeGetSeconds(pts)
-                if let pf = await processFrame(pixelBuffer, timestamp: ts) {
+                if let pf = await processFrame(pixelBuffer, timestamp: ts, orientation: orientation) {
                     frames.append(pf)
                 }
                 if totalDuration.isFinite && totalDuration > 0 {
