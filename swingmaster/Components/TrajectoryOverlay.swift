@@ -25,7 +25,10 @@ struct TrajectoryOverlay: View {
                 let hasCompleted = progress >= 0.95 || showFullPath
 
                 for type in enabledTrajectories {
-                    if let points = trajectoriesByType[type], !points.isEmpty {
+                    if let rawPoints = trajectoriesByType[type], !rawPoints.isEmpty {
+                        // Overlay-only trim: clip trajectory to [0, shotDuration]
+                        let points = rawPoints.filter { $0.timestamp >= 0 && $0.timestamp <= shotDuration }
+                        if points.isEmpty { continue }
                         drawTrajectory(context: context, points: points, color: color(for: type), videoRect: videoRect, progress: progress, showDotOnly: !hasStarted, showFullPath: hasCompleted)
                     }
                 }
