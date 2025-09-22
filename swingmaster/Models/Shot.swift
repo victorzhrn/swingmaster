@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import SwiftUI
+import CoreGraphics
 
 /// Represents the type of a tennis shot.
 /// Provides UI affordances like short labels and associated colors.
@@ -36,15 +36,7 @@ public enum ShotType: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Color mapping aligned with design principles.
-    var accentColor: Color {
-        switch self {
-        case .forehand: return TennisColors.tennisGreen
-        case .backhand: return TennisColors.aceGreen
-        case .serve: return TennisColors.clayOrange
-        case .unknown: return Color.gray.opacity(0.6)
-        }
-    }
+    // UI color mapping removed from data layer. Provide UI colors via a UI-layer extension.
 }
 
 /// Simple model representing a detected shot in a session.

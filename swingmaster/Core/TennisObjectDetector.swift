@@ -10,7 +10,7 @@ import Vision
 import CoreML
 import CoreVideo
 import ImageIO
-import UIKit
+// UIKit not needed for core detection; avoid importing to support macOS CLI tools
 import AVFoundation
 
 class TennisObjectDetector {
@@ -38,9 +38,17 @@ class TennisObjectDetector {
             return
         }
         
-        // Load compiled YOLO11 model from bundle
-        guard let modelURL = Bundle.main.url(forResource: "yolo11l", withExtension: "mlmodelc") else {
-            print("Failed to find YOLO11 model (yolo11l.mlmodelc) in bundle")
+        // Load compiled YOLO11 model from bundle, or environment override
+        var modelURL: URL? = Bundle.main.url(forResource: "yolo11l", withExtension: "mlmodelc")
+        if modelURL == nil, let override = ProcessInfo.processInfo.environment["YOLO11_MODEL_PATH"], !override.isEmpty {
+            let candidate = URL(fileURLWithPath: override)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                modelURL = candidate
+                print("Using YOLO11 model from YOLO11_MODEL_PATH: \(candidate.path)")
+            }
+        }
+        guard let modelURL = modelURL else {
+            print("Failed to locate YOLO11 model (yolo11l.mlmodelc). Set YOLO11_MODEL_PATH if not bundled.")
             return
         }
         

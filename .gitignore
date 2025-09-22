@@ -122,4 +122,8 @@ yolo/*.pt
 yolo/.venv*/
 
 # Pro comparison videos
-swingmaster/ProVideos/
+swingmaster/ProVideos/*.mov
+swingmaster/ProVideos/*.json
+
+# Local compiled tools (do not commit binaries)
+Tools/process_pro_videos_pipeline

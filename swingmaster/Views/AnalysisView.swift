@@ -28,6 +28,10 @@ struct AnalysisView: View {
     @State private var videoAspectRatio: CGFloat = 16.0/9.0
     @State private var trajectoryCache: [UUID: [TrajectoryType: [TrajectoryPoint]]] = [:]
     @State private var isComparing: Bool = false
+    // Pro comparison state
+    @State private var proShot: Shot? = nil
+    @State private var proTrajectories: [TrajectoryType: [TrajectoryPoint]] = [:]
+    @State private var proVideoAspectRatio: CGFloat = 16.0/9.0
 
     var body: some View {
         GeometryReader { geometry in
@@ -150,6 +154,47 @@ struct AnalysisView: View {
                 playSegment(shot)
             }
         }
+        .onChange(of: enabledTrajectories) { _, _ in
+            // Mirror left-side precompute: ensure pro trajectories update when selection changes
+            if isComparing, let shot = proShot {
+                var map = proTrajectories
+                for t in enabledTrajectories where map[t] == nil {
+                    map[t] = TrajectoryComputer.compute(
+                        type: t,
+                        poseFrames: shot.paddedPoseFrames,
+                        objectFrames: shot.paddedObjectFrames,
+                        startTime: shot.startTime,
+                        options: trajectoryOptions
+                    )
+                }
+                proTrajectories = map
+            }
+        }
+        .onChange(of: isComparing) { _, newValue in
+            if newValue {
+                // Load pro shot analysis and precompute trajectories for enabled types
+                proShot = ProVideoLoader.loadShot(named: "DjokvicForhand")
+                if let proURL = Bundle.main.url(forResource: "DjokvicForhand", withExtension: "mov") {
+                    loadProAspectRatio(from: proURL)
+                }
+                if let shot = proShot {
+                    var map: [TrajectoryType: [TrajectoryPoint]] = [:]
+                    for t in enabledTrajectories {
+                        map[t] = TrajectoryComputer.compute(
+                            type: t,
+                            poseFrames: shot.paddedPoseFrames,
+                            objectFrames: shot.paddedObjectFrames,
+                            startTime: shot.startTime,
+                            options: trajectoryOptions
+                        )
+                    }
+                    proTrajectories = map
+                }
+            } else {
+                proShot = nil
+                proTrajectories = [:]
+            }
+        }
         
     }
 
@@ -188,18 +233,31 @@ struct AnalysisView: View {
                 
                 // Pro video (right) - local file
                 if let proURL = Bundle.main.url(
-                    forResource: "DjokvicForhand", 
+                    forResource: "DjokvicForhand",
                     withExtension: "mov"
                 ) {
                     VideoPlayerView(
                         url: proURL,
-                        currentTime: .constant(0),
+                        currentTime: .constant(proVideoTime),
                         isPlaying: $isPlaying, // Sync play/pause
                         showsControls: false
                     )
                     .frame(width: geometry.size.width / 2)
                     .clipped() // Handle narrower aspect ratio
                     .overlay(proVideoLabel, alignment: .topLeading)
+                    .overlay(alignment: .center) {
+                        if let pro = proShot {
+                            TrajectoryOverlay(
+                                trajectoriesByType: proTrajectories,
+                                enabledTrajectories: enabledTrajectories,
+                                currentTime: max(0, proVideoTime - pro.startTime),
+                                shotDuration: max(0, pro.endTime - pro.startTime),
+                                videoAspectRatio: proVideoAspectRatio
+                            )
+                        } else {
+                            EmptyView()
+                        }
+                    }
                 } else {
                     Rectangle()
                         .fill(Color.black)
@@ -374,6 +432,28 @@ extension AnalysisView {
             let height = abs(transformed.height)
             await MainActor.run { self.videoAspectRatio = width / height }
         }
+    }
+
+    // Pro video aspect ratio
+    fileprivate func loadProAspectRatio(from url: URL) {
+        Task {
+            let asset = AVAsset(url: url)
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
+            let size = try? await track.load(.naturalSize)
+            let transform = try? await track.load(.preferredTransform)
+            guard let size = size else { return }
+            let transformed = size.applying(transform ?? .identity)
+            let width = abs(transformed.width)
+            let height = abs(transformed.height)
+            await MainActor.run { self.proVideoAspectRatio = width / height }
+        }
+    }
+
+    // Map user's current shot-relative time to pro video time
+    fileprivate var proVideoTime: Double {
+        guard let userShot = shots.first(where: { $0.id == selectedShotID }), let pro = proShot else { return 0 }
+        let userOffset = max(0, currentTime - userShot.startTime)
+        return pro.startTime + userOffset
     }
 }
 
