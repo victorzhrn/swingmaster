@@ -19,6 +19,12 @@ struct VideoSessionCard: View {
         analysisData?.shots ?? []
     }
     
+    private var shotCountText: String? {
+        if session.shotCount > 0 { return "\(session.shotCount) shots" }
+        let count = shots.count
+        return count > 0 ? "\(count) shots" : nil
+    }
+    
     
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -74,9 +80,8 @@ struct VideoSessionCard: View {
                         
                         Spacer()
                         
-                        if !shots.isEmpty {
-                            // Shot count only
-                            Text("\(shots.count) shots")
+                        if let shotText = shotCountText {
+                            Text(shotText)
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.secondary)
                         }
@@ -108,6 +113,16 @@ struct VideoSessionCard: View {
         .onAppear {
             loadAnalysisData()
             updateThumbnail(for: shots.first?.time ?? 1.0)
+        }
+        .onChange(of: session.processingStatus) { newStatus in
+            // When processing finishes (or reaches a state where partial results are available), reload analysis
+            if !newStatus.isProcessing {
+                let newData = AnalysisStore.load(videoURL: session.videoURL)
+                analysisData = newData
+                if let firstTime = newData?.shots.first?.time {
+                    updateThumbnail(for: firstTime)
+                }
+            }
         }
     }
     

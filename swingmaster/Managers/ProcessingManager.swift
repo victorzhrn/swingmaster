@@ -104,7 +104,6 @@ final class ProcessingManager: ObservableObject {
                     id: res.id,
                     time: t,
                     type: res.swingType,
-                    issue: "",  // No issue until AI analysis
                     startTime: res.segment.startTime,
                     endTime: res.segment.endTime,
                     segmentMetrics: res.segmentMetrics,  // Simple metrics for UI

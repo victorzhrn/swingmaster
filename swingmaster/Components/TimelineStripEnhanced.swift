@@ -377,7 +377,7 @@ struct TimelineStripEnhanced: View {
                 let type: ShotType = [ShotType.forehand, .backhand, .serve][i % 3]
                 let start = max(0, t - 0.45)
                 let end = min(duration, t + 0.45)
-                return Shot(time: t, type: type, issue: "", startTime: start, endTime: end)
+                return Shot(time: t, type: type, startTime: start, endTime: end)
             }
         }() // Dense timeline
         @State private var selectedID: UUID?

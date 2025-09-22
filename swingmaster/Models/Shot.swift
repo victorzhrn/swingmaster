@@ -54,7 +54,6 @@ public struct Shot: Identifiable, Hashable, Codable {
     public let startTime: Double  // Start of the swing segment
     public let endTime: Double    // End of the swing segment
     public let type: ShotType
-    public let issue: String
     
     // Persisted minimal analytics for UI
     public let segmentMetrics: SegmentMetrics?  // Simple metrics for UI
@@ -64,7 +63,7 @@ public struct Shot: Identifiable, Hashable, Codable {
     public let paddedObjectFrames: [ObjectDetectionFrame]
     
     enum CodingKeys: String, CodingKey {
-        case id, time, startTime, endTime, type, issue
+        case id, time, startTime, endTime, type
         case segmentMetrics
         case paddedPoseFrames, paddedObjectFrames
     }
@@ -81,7 +80,6 @@ public struct Shot: Identifiable, Hashable, Codable {
     public init(id: UUID = UUID(), 
                 time: Double, 
                 type: ShotType, 
-                issue: String, 
                 startTime: Double? = nil, 
                 endTime: Double? = nil, 
                 segmentMetrics: SegmentMetrics? = nil,
@@ -93,7 +91,6 @@ public struct Shot: Identifiable, Hashable, Codable {
         self.startTime = startTime ?? Swift.max(0, time - 0.5)
         self.endTime = endTime ?? (time + 0.5)
         self.type = type
-        self.issue = issue
         self.segmentMetrics = segmentMetrics
         self.paddedPoseFrames = paddedPoseFrames ?? []
         self.paddedObjectFrames = paddedObjectFrames ?? []
@@ -112,12 +109,6 @@ extension Array where Element == Shot {
     static func sampleShots(duration: Double) -> [Shot] {
         let times = [duration * 0.18, duration * 0.42, duration * 0.58, duration * 0.76]
         let types: [ShotType] = [.forehand, .backhand, .forehand, .backhand]
-        let issues = [
-            "Late contact",
-            "Solid base, slight rotation lag",
-            "Contact inconsistent",
-            "Great extension"
-        ]
         
         // Add sample metrics
         let sampleMetrics = SegmentMetrics(
@@ -134,9 +125,9 @@ extension Array where Element == Shot {
             let swingDuration = [0.9, 1.1, 0.8, 1.2][idx]  // Deterministic for previews
             let start = Swift.max(0, t - swingDuration/2)
             let end = Swift.min(duration, t + swingDuration/2)
-            let shot = Shot(time: t, type: types[idx], issue: issues[idx], 
-                          startTime: start, endTime: end,
-                          segmentMetrics: sampleMetrics)
+            let shot = Shot(time: t, type: types[idx],
+                            startTime: start, endTime: end,
+                            segmentMetrics: sampleMetrics)
             return shot
         }
     }
