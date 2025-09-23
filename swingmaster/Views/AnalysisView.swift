@@ -42,14 +42,16 @@ struct AnalysisView: View {
 
     // MARK: - Skeleton state
     @State private var showSkeleton: Bool = false
+    @State private var skeletonOnly: Bool = false
     @State private var currentUserPose: PoseFrame? = nil
     @State private var currentProPose: PoseFrame? = nil
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Base Layer: Full-screen video
+                // Base Layer: Full-screen video (kept for playback; visually hidden in Skeleton Only)
                 videoLayer(geometry: geometry)
+                    .opacity(skeletonOnly ? 0 : 1)
                 
                 // Overlay Layer 1: Skeleton or Trajectory visualization
                 if let shot = shots.first(where: { $0.id == selectedShotID }) {
@@ -132,7 +134,7 @@ struct AnalysisView: View {
 
                     // Floating controls layer
                     HStack(alignment: .bottom) {
-                        ViewModeControl(enabledTrajectories: $enabledTrajectories, showSkeleton: $showSkeleton)
+                        ViewModeControl(enabledTrajectories: $enabledTrajectories, showSkeleton: $showSkeleton, skeletonOnly: $skeletonOnly)
 
                         Spacer()
                         

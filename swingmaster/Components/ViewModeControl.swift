@@ -5,6 +5,7 @@ import SwiftUI
 struct ViewModeControl: View {
     @Binding var enabledTrajectories: Set<TrajectoryType>
     @Binding var showSkeleton: Bool
+    @Binding var skeletonOnly: Bool
 
     @State private var isMenuOpen: Bool = false
     @State private var selectedOption: ViewOption = .wrist
@@ -14,6 +15,7 @@ struct ViewModeControl: View {
         case racket = "Racket Path"
         case wrist = "Wrist Path"
         case skeleton = "Skeleton"
+        case skeletonOnly = "Skeleton Only"
         case off = "Off"
 
         var icon: String {
@@ -21,6 +23,7 @@ struct ViewModeControl: View {
             case .racket: return "tennis.racket"
             case .wrist: return "hand.wave"
             case .skeleton: return "figure.walk"
+            case .skeletonOnly: return "eye.slash"
             case .off: return "slash.circle"
             }
         }
@@ -63,24 +66,36 @@ struct ViewModeControl: View {
                     Button(action: { select(option) }) {
                         HStack(spacing: 8) {
                             Image(systemName: option.icon)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
+                                .symbolRenderingMode(.hierarchical)
                                 .frame(width: 18)
                             Text(option.rawValue)
-                            Spacer()
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white.opacity(0.95))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.9)
+                            Spacer(minLength: 8)
                             Image(systemName: "checkmark")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white)
                                 .opacity(selectedOption == option ? 1 : 0)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 12)
                     }
                     if option != ViewOption.allCases.last {
                         Divider()
+                            .background(Color.white.opacity(0.15))
                     }
                 }
             }
-            .font(.subheadline)
-            .foregroundColor(.white)
-            .background(.regularMaterial)
+            .frame(minWidth: 200)
+            .background(.thinMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
             .cornerRadius(12)
             .offset(y: -160)
         }
@@ -101,21 +116,29 @@ struct ViewModeControl: View {
         case .skeleton:
             showSkeleton = true
             enabledTrajectories.removeAll()
+            skeletonOnly = false
+        case .skeletonOnly:
+            showSkeleton = true
+            enabledTrajectories.removeAll()
+            skeletonOnly = true
         case .off:
             showSkeleton = false
             enabledTrajectories.removeAll()
+            skeletonOnly = false
         case .racket:
             showSkeleton = false
             enabledTrajectories = [.racketCenter]
+            skeletonOnly = false
         case .wrist:
             showSkeleton = false
             enabledTrajectories = [.rightWrist]
+            skeletonOnly = false
         }
     }
 
     private func syncFromBindings() {
         if showSkeleton {
-            selectedOption = .skeleton
+            selectedOption = skeletonOnly ? .skeletonOnly : .skeleton
         } else if enabledTrajectories.contains(.racketCenter) {
             selectedOption = .racket
         } else if enabledTrajectories.contains(.rightWrist) {
@@ -136,6 +159,7 @@ private extension ViewModeControl.ViewOption {
         case .racket: return "racket"
         case .wrist: return "wrist"
         case .skeleton: return "skeleton"
+        case .skeletonOnly: return "skeletonOnly"
         case .off: return "off"
         }
     }
@@ -145,6 +169,7 @@ private extension ViewModeControl.ViewOption {
         case "racket": self = .racket
         case "wrist": self = .wrist
         case "skeleton": self = .skeleton
+        case "skeletonOnly": self = .skeletonOnly
         case "off": self = .off
         default: return nil
         }
