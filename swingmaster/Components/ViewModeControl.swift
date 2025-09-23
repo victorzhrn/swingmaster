@@ -1,0 +1,154 @@
+import SwiftUI
+
+/// Unified view mode control that selects between trajectory views and skeleton.
+/// Replaces the old TrajectorySelector and inline ViewControlsPanel.
+struct ViewModeControl: View {
+    @Binding var enabledTrajectories: Set<TrajectoryType>
+    @Binding var showSkeleton: Bool
+
+    @State private var isMenuOpen: Bool = false
+    @State private var selectedOption: ViewOption = .wrist
+    @AppStorage("lastSelectedTrajectory") private var lastSelectedTrajectory: String = "wrist"
+
+    enum ViewOption: String, CaseIterable {
+        case racket = "Racket Path"
+        case wrist = "Wrist Path"
+        case skeleton = "Skeleton"
+        case off = "Off"
+
+        var icon: String {
+            switch self {
+            case .racket: return "tennis.racket"
+            case .wrist: return "hand.wave"
+            case .skeleton: return "figure.walk"
+            case .off: return "slash.circle"
+            }
+        }
+    }
+
+    var body: some View {
+        Button(action: { isMenuOpen.toggle() }) {
+            HStack(spacing: Spacing.micro) { // 4pt spacing to match CompareToggle
+                Image(systemName: "eye")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+                    .symbolRenderingMode(.hierarchical)
+                Text("View")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                Text(selectedOption.rawValue)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.95))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 44)
+        }
+        .contentShape(Rectangle())
+        .overlay(menuView, alignment: .top)
+        .accessibilityLabel(Text("View mode"))
+        .accessibilityValue(Text(selectedOption.rawValue))
+        .onAppear { syncFromBindings() }
+    }
+
+    @ViewBuilder
+    private var menuView: some View {
+        if isMenuOpen {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(ViewOption.allCases, id: \.self) { option in
+                    Button(action: { select(option) }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: option.icon)
+                                .frame(width: 18)
+                            Text(option.rawValue)
+                            Spacer()
+                            Image(systemName: "checkmark")
+                                .opacity(selectedOption == option ? 1 : 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                    }
+                    if option != ViewOption.allCases.last {
+                        Divider()
+                    }
+                }
+            }
+            .font(.subheadline)
+            .foregroundColor(.white)
+            .background(.regularMaterial)
+            .cornerRadius(12)
+            .offset(y: -160)
+        }
+    }
+
+    private func select(_ option: ViewOption) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            selectedOption = option
+            lastSelectedTrajectory = option.storageKey
+            applyToBindings(option)
+            isMenuOpen = false
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func applyToBindings(_ option: ViewOption) {
+        switch option {
+        case .skeleton:
+            showSkeleton = true
+            enabledTrajectories.removeAll()
+        case .off:
+            showSkeleton = false
+            enabledTrajectories.removeAll()
+        case .racket:
+            showSkeleton = false
+            enabledTrajectories = [.racketCenter]
+        case .wrist:
+            showSkeleton = false
+            enabledTrajectories = [.rightWrist]
+        }
+    }
+
+    private func syncFromBindings() {
+        if showSkeleton {
+            selectedOption = .skeleton
+        } else if enabledTrajectories.contains(.racketCenter) {
+            selectedOption = .racket
+        } else if enabledTrajectories.contains(.rightWrist) {
+            selectedOption = .wrist
+        } else if let stored = ViewOption(storageKey: lastSelectedTrajectory) {
+            selectedOption = stored
+            applyToBindings(stored)
+        } else {
+            selectedOption = .wrist
+            applyToBindings(.wrist)
+        }
+    }
+}
+
+private extension ViewModeControl.ViewOption {
+    var storageKey: String {
+        switch self {
+        case .racket: return "racket"
+        case .wrist: return "wrist"
+        case .skeleton: return "skeleton"
+        case .off: return "off"
+        }
+    }
+
+    init?(storageKey: String) {
+        switch storageKey {
+        case "racket": self = .racket
+        case "wrist": self = .wrist
+        case "skeleton": self = .skeleton
+        case "off": self = .off
+        default: return nil
+        }
+    }
+}
+
+

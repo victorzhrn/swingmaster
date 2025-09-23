@@ -9,6 +9,8 @@
 import SwiftUI
 import UIKit
 
+/// Compact timeline strip intended to be used inside a navigation panel
+/// below the video. Pair with `KeyframeTabs` and floating view controls.
 struct TimelineStripEnhanced: View {
     let duration: Double
     let shots: [Shot]

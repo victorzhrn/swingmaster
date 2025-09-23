@@ -13,9 +13,12 @@ struct CompareToggle: View {
                     .foregroundColor(labelColor)
                     .symbolRenderingMode(.hierarchical)
                 
-                Text("Compare")
+                Text(buttonText)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(labelColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .layoutPriority(1)
                 
                 // Custom switch aligned with design principles
                 ZStack {
@@ -46,6 +49,9 @@ struct CompareToggle: View {
         }
         .buttonStyle(PlainButtonStyle())
         .scaleEffect(isPressed ? 0.96 : 1.0) // Design principle: scale(0.96) for buttons
+        .accessibilityLabel(Text(buttonText))
+        .accessibilityHint(Text("Toggle side-by-side comparison with a pro video"))
+        .accessibilityValue(Text(isComparing ? "On" : "Off"))
         .onLongPressGesture(
             minimumDuration: 0,
             maximumDistance: .infinity,
@@ -80,5 +86,9 @@ struct CompareToggle: View {
         isComparing ? 
         TennisColors.tennisGreen : 
         Color.white.opacity(0.6)
+    }
+    
+    private var buttonText: String {
+        isComparing ? "Exit Pro Compare" : "Compare vs Pro"
     }
 }

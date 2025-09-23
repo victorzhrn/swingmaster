@@ -37,6 +37,9 @@ struct AnalysisView: View {
     @State private var proSegmentStart: Double? = nil
     @State private var proSegmentEnd: Double? = nil
 
+    // MARK: - Keyframe tabs
+    @State private var selectedKeyframeIndex: Int = 0
+
     // MARK: - Skeleton state
     @State private var showSkeleton: Bool = false
     @State private var currentUserPose: PoseFrame? = nil
@@ -123,28 +126,33 @@ struct AnalysisView: View {
                     Spacer()
                 }
                 
-                // Overlay Layer 3: Unified bottom control panel
+                // Overlay Layer 3: Floating controls + Navigation panel
                 VStack {
                     Spacer()
-                    
-                    // Unified glass container for bottom controls
-                    VStack(spacing: 0) {
-                        // Trajectory selector row
-                        TrajectorySelector(
-                            enabledTrajectories: $enabledTrajectories,
-                            isComparing: $isComparing,
-                            showSkeleton: $showSkeleton
-                        )
-                        .padding(.horizontal, Spacing.small) // 8pt per design system
-                        .padding(.vertical, Spacing.small)
+
+                    // Floating controls layer
+                    HStack(alignment: .bottom) {
+                        ViewModeControl(enabledTrajectories: $enabledTrajectories, showSkeleton: $showSkeleton)
+
+                        Spacer()
                         
-                        // Subtle divider
+                        CompareToggle(isComparing: $isComparing)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+
+                    // Navigation panel (full width)
+                    VStack(spacing: 8) {
+                        KeyframeTabs(
+                            shot: shots.first(where: { $0.id == selectedShotID }),
+                            currentTime: $currentTime,
+                            selectedIndex: $selectedKeyframeIndex
+                        )
+
                         Rectangle()
                             .fill(Color.white.opacity(0.1))
                             .frame(height: 0.5)
-                            .padding(.horizontal, 16)
-                        
-                        // Timeline strip row
+
                         TimelineStripEnhanced(
                             duration: duration,
                             shots: shots,
@@ -158,13 +166,15 @@ struct AnalysisView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 8)
                     }
-                    .background(.thinMaterial) // Medium glass effect
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.thinMaterial)
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1) // 15% white border
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .padding(.horizontal, 16) // Consistent 16pt margins
+                    .padding(.horizontal, 16)
                     .padding(.bottom, geometry.safeAreaInsets.bottom + 8)
                 }
             }
@@ -196,6 +206,7 @@ struct AnalysisView: View {
                 currentProPose = nil
             }
         }
+        // view mode changes are handled by ViewModeControl via bindings
         // Decouple pro playback so pro shot can finish even if user shot is shorter
         .onChange(of: enabledTrajectories) { _, _ in
             // Mirror left-side precompute: ensure pro trajectories update when selection changes
@@ -565,6 +576,62 @@ extension AnalysisView {
         return abs(a.timestamp - time) <= abs(b.timestamp - time) ? a : b
     }
 }
+
+// MARK: - Local Components (KeyframeTabs)
+
+private struct KeyframeTabs: View {
+    let shot: Shot?
+    @Binding var currentTime: Double
+    @Binding var selectedIndex: Int
+
+    private let keyframeLabels = ["Ready", "Back", "Contact", "Follow", "End"]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<keyframeLabels.count, id: \.self) { index in
+                Button(action: {
+                    selectedIndex = index
+                    if let s = shot {
+                        let t = timeForKeyframe(index: index, shot: s)
+                        currentTime = t
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }) {
+                    VStack(spacing: 2) {
+                        Text(keyframeLabels[index])
+                            .font(.subheadline)
+                        Text(timeTextForKeyframe(index: index))
+                            .font(.caption2)
+                            .opacity(0.7)
+                    }
+                    .foregroundColor(selectedIndex == index ? TennisColors.tennisGreen : .white.opacity(0.7))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(selectedIndex == index ? TennisColors.tennisGreen.opacity(0.2) : Color.clear)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .frame(height: 44)
+    }
+
+    private func timeForKeyframe(index: Int, shot: Shot) -> Double {
+        let fractions: [Double] = [0.0, 1.0/3.0, 0.5, 2.0/3.0, 1.0]
+        let f = fractions[min(max(index, 0), fractions.count - 1)]
+        return shot.startTime + f * shot.duration
+    }
+
+    private func timeTextForKeyframe(index: Int) -> String {
+        guard let s = shot else { return "--" }
+        let t = timeForKeyframe(index: index, shot: s) - s.startTime
+        return String(format: "%.1fs", t)
+    }
+}
+
+// ViewModeControl binds directly to enabledTrajectories and showSkeleton
 
 #Preview("AnalysisView") {
     let shots = Array<Shot>.sampleShots(duration: 92)
