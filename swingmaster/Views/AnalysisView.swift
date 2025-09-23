@@ -32,6 +32,8 @@ struct AnalysisView: View {
     @State private var proShot: Shot? = nil
     @State private var proTrajectories: [TrajectoryType: [TrajectoryPoint]] = [:]
     @State private var proVideoAspectRatio: CGFloat = 16.0/9.0
+    @State private var proCurrentTime: Double = 0
+    @State private var proIsPlaying: Bool = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -189,10 +191,17 @@ struct AnalysisView: View {
                         )
                     }
                     proTrajectories = map
+                    // One-time alignment of pro playback time/state when compare starts
+                    if let userShot = shots.first(where: { $0.id == selectedShotID }) {
+                        let userOffset = max(0, currentTime - userShot.startTime)
+                        proCurrentTime = shot.startTime + userOffset
+                        proIsPlaying = isPlaying
+                    }
                 }
             } else {
                 proShot = nil
                 proTrajectories = [:]
+                proIsPlaying = false
             }
         }
         
@@ -238,8 +247,8 @@ struct AnalysisView: View {
                 ) {
                     VideoPlayerView(
                         url: proURL,
-                        currentTime: .constant(proVideoTime),
-                        isPlaying: $isPlaying, // Sync play/pause
+                        currentTime: $proCurrentTime,
+                        isPlaying: $proIsPlaying, // Independent play/pause
                         showsControls: false
                     )
                     .frame(width: geometry.size.width / 2)
@@ -250,7 +259,8 @@ struct AnalysisView: View {
                             TrajectoryOverlay(
                                 trajectoriesByType: proTrajectories,
                                 enabledTrajectories: enabledTrajectories,
-                                currentTime: max(0, proVideoTime - pro.startTime),
+                                // Show full pro trajectory in compare mode
+                                currentTime: max(0, pro.endTime - pro.startTime),
                                 shotDuration: max(0, pro.endTime - pro.startTime),
                                 videoAspectRatio: proVideoAspectRatio
                             )
@@ -361,6 +371,11 @@ struct AnalysisView: View {
             Task { await precomputeIfNeeded(for: shot, videoURL: url) }
         }
         isPlaying = true
+        // Align and start pro playback if available
+        if isComparing, let pro = proShot {
+            proCurrentTime = pro.startTime
+            proIsPlaying = true
+        }
     }
     
     
