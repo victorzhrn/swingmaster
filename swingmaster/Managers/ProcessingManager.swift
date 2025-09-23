@@ -108,7 +108,8 @@ final class ProcessingManager: ObservableObject {
                     endTime: res.segment.endTime,
                     segmentMetrics: res.segmentMetrics,  // Simple metrics for UI
                     paddedPoseFrames: paddedPoseFrames,  // Store padded pose frames
-                    paddedObjectFrames: paddedObjectFrames  // Store padded object frames
+                    paddedObjectFrames: paddedObjectFrames,  // Store padded object frames
+                    keyFrameTimes: res.keyFrameTimes
                 )
                 self.logger.log("[Save] Shot type=\(shot.type.rawValue, privacy: .public) startTS=\(shot.startTime, privacy: .public) endTS=\(shot.endTime, privacy: .public) duration=\(shot.duration, format: .fixed(precision: 3)) poses=\(paddedPoseFrames.count) objects=\(paddedObjectFrames.count)")
                 return shot

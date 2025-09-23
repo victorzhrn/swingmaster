@@ -54,10 +54,14 @@ public struct Shot: Identifiable, Hashable, Codable {
     public let paddedPoseFrames: [PoseFrame]
     public let paddedObjectFrames: [ObjectDetectionFrame]
     
+    // Optional absolute timestamps for key frames (Preparation, Backswing, Contact, Follow Through, Recovery)
+    public let keyFrameTimes: KeyFrameTimes?
+    
     enum CodingKeys: String, CodingKey {
         case id, time, startTime, endTime, type
         case segmentMetrics
         case paddedPoseFrames, paddedObjectFrames
+        case keyFrameTimes
     }
     
     // Custom Hashable to exclude frame data
@@ -76,7 +80,8 @@ public struct Shot: Identifiable, Hashable, Codable {
                 endTime: Double? = nil, 
                 segmentMetrics: SegmentMetrics? = nil,
                 paddedPoseFrames: [PoseFrame]? = nil,
-                paddedObjectFrames: [ObjectDetectionFrame]? = nil) {
+                paddedObjectFrames: [ObjectDetectionFrame]? = nil,
+                keyFrameTimes: KeyFrameTimes? = nil) {
         self.id = id
         self.time = time
         // Default to 1 second swing duration if not specified
@@ -86,6 +91,7 @@ public struct Shot: Identifiable, Hashable, Codable {
         self.segmentMetrics = segmentMetrics
         self.paddedPoseFrames = paddedPoseFrames ?? []
         self.paddedObjectFrames = paddedObjectFrames ?? []
+        self.keyFrameTimes = keyFrameTimes
     }
     
     /// Duration of the swing in seconds

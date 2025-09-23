@@ -19,6 +19,7 @@ public struct ValidatedSwing: Sendable, Codable {
     public let confidence: Float
     public let originalTimestamp: TimeInterval
     public let keyFrameIndices: KeyFrameIndices
+    public let keyFrameTimes: KeyFrameTimes
 }
 
 public struct KeyFrameIndices: Sendable, Codable {
@@ -99,11 +100,21 @@ public final class GeminiValidator {
             recovery: clamp(parsed.keyFrames.recovery)
         )
         logger.log("[Gemini] Local key frames (prep,back,contact,follow,recover)=\(localKF.preparation),\(localKF.backswing),\(localKF.contact),\(localKF.followThrough),\(localKF.recovery)")
+        // Compute absolute timestamps for key frames from local indices
+        let safeIndex: (Int) -> Int = { i in max(0, min(i, subframes.count - 1)) }
+        let times = KeyFrameTimes(
+            preparation: subframes[safeIndex(localKF.preparation)].timestamp,
+            backswing: subframes[safeIndex(localKF.backswing)].timestamp,
+            contact: subframes[safeIndex(localKF.contact)].timestamp,
+            followThrough: subframes[safeIndex(localKF.followThrough)].timestamp,
+            recovery: subframes[safeIndex(localKF.recovery)].timestamp
+        )
         return ValidatedSwing(frames: subframes,
                               type: parsed.swingType,
                               confidence: parsed.confidence,
                               originalTimestamp: potential.timestamp,
-                              keyFrameIndices: localKF)
+                              keyFrameIndices: localKF,
+                              keyFrameTimes: times)
     }
 
 

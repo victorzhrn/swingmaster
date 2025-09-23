@@ -586,7 +586,8 @@ private struct KeyframeTabs: View {
     @Binding var currentTime: Double
     @Binding var selectedIndex: Int
 
-    private let keyframeLabels = ["Ready", "Back", "Contact", "Follow", "End"]
+    // Consistent naming: preparation, backswing, contact, follow through, recovery
+    private let keyframeLabels = ["Preparation", "Backswing", "Contact", "Follow Through", "Recovery"]
 
     var body: some View {
         HStack(spacing: 2) {
@@ -621,6 +622,18 @@ private struct KeyframeTabs: View {
     }
 
     private func timeForKeyframe(index: Int, shot: Shot) -> Double {
+        if let times = shot.keyFrameTimes {
+            // Map index to absolute time
+            switch index {
+            case 0: return clamp(times.preparation, shot: shot)
+            case 1: return clamp(times.backswing, shot: shot)
+            case 2: return clamp(times.contact, shot: shot)
+            case 3: return clamp(times.followThrough, shot: shot)
+            case 4: return clamp(times.recovery, shot: shot)
+            default: break
+            }
+        }
+        // Fallback: proportional fractions
         let fractions: [Double] = [0.0, 1.0/3.0, 0.5, 2.0/3.0, 1.0]
         let f = fractions[min(max(index, 0), fractions.count - 1)]
         return shot.startTime + f * shot.duration
@@ -630,6 +643,10 @@ private struct KeyframeTabs: View {
         guard let s = shot else { return "--" }
         let t = timeForKeyframe(index: index, shot: s) - s.startTime
         return String(format: "%.1fs", t)
+    }
+
+    private func clamp(_ t: Double, shot: Shot) -> Double {
+        return min(max(t, shot.startTime), shot.endTime)
     }
 }
 

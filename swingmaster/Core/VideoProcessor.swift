@@ -169,7 +169,8 @@ public final class VideoProcessor: ObservableObject {
                 ),
                 swingType: swing.type,
                 segmentMetrics: segmentMetrics,
-                objectFrames: paddedObjects
+                objectFrames: paddedObjects,
+                keyFrameTimes: swing.keyFrameTimes
             )
             results.append(result)
             let s = result.segment.startTime
@@ -226,7 +227,8 @@ public final class VideoProcessor: ObservableObject {
                 ),
                 swingType: swing.type,
                 segmentMetrics: segmentMetrics,
-                objectFrames: emptyObjectFrames
+                objectFrames: emptyObjectFrames,
+                keyFrameTimes: swing.keyFrameTimes
             )
             results.append(result)
             let s = result.segment.startTime
