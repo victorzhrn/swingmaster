@@ -133,7 +133,13 @@ public final class VideoProcessor: ObservableObject {
             for (idx, candidate) in potentialSwings.enumerated() {
                 self.state = .validatingSwings(current: idx + 1, total: potentialSwings.count)
                 logger.log("[File] Sending candidate #\(idx + 1)/\(potentialSwings.count) to validator…")
-                if let vs = try? await geminiValidator.validateSwing(candidate) {
+                // Filter object frames for candidate window
+                let candidateStart = candidate.frames.first?.timestamp ?? 0
+                let candidateEnd = candidate.frames.last?.timestamp ?? 0
+                let relevantObjectFrames = objectFrames.filter {
+                    $0.timestamp >= candidateStart && $0.timestamp <= candidateEnd
+                }
+                if let vs = try? await geminiValidator.validateSwing(candidate, objectFrames: relevantObjectFrames) {
                     validated.append(vs)
                     logger.log("[File] Validation OK: type=\(vs.type.rawValue, privacy: .public) confidence=\(vs.confidence, format: .fixed(precision: 2)) frames=\(vs.frames.count)")
                 } else {
@@ -193,7 +199,7 @@ public final class VideoProcessor: ObservableObject {
         for (idx, candidate) in potentialSwings.enumerated() {
             self.state = .validatingSwings(current: idx + 1, total: potentialSwings.count)
             logger.log("[Live] Sending candidate #\(idx + 1)/\(potentialSwings.count) to validator…")
-            if let vs = try? await geminiValidator.validateSwing(candidate) {
+            if let vs = try? await geminiValidator.validateSwing(candidate, objectFrames: []) {
                 validated.append(vs)
                 logger.log("[Live] Validation OK: type=\(vs.type.rawValue, privacy: .public) confidence=\(vs.confidence, format: .fixed(precision: 2)) frames=\(vs.frames.count)")
             } else {

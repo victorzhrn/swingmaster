@@ -39,24 +39,51 @@ public final class GeminiValidator {
         self.modelName = modelName
     }
 
-    // MARK: - Swing Validation (8 sampled frames from 30)
+    // MARK: - Swing Validation (1 image + CSV for all frames)
 
-    public func validateSwing(_ potential: PotentialSwing) async throws -> ValidatedSwing? {
-        // Sample approximately 8 frames from the candidate sequence (dynamic length)
-        // Weight sampling toward the peak for better accuracy
-        let sampledFrames = sampleFramesForValidation(potential.frames, peakIndex: potential.peakFrameIndex, targetCount: 8)
-        let images = try await prepareImages(from: sampledFrames.map { $0.frame })
-        let prompt = makeValidationPrompt(potential: potential, sampledFrameIndices: sampledFrames.map { $0.originalIndex })
-        logger.log("[Gemini] Validation frames sent=\(images.count) (sampled from \(potential.frames.count))")
-        logger.log("[Gemini] Validation prompt head=\(self.firstWords(prompt, count: 10), privacy: .public)")
-        let response = try await callGeminiAPI(images: images, prompt: prompt)
+    public func validateSwing(_ potential: PotentialSwing,
+                              objectFrames: [ObjectDetectionFrame] = []) async throws -> ValidatedSwing? {
+        logger.log("[Gemini] Start validation. frames=\(potential.frames.count) peakIndex=\(potential.peakFrameIndex) objFrames=\(objectFrames.count)")
+        // Render single peak frame image
+        let peakFrame = potential.frames[potential.peakFrameIndex]
+        logger.log("[Gemini] Rendering peak frame image… ts=\(peakFrame.timestamp, privacy: .public)")
+        let peakImage = try await renderSingleFrame(peakFrame)
+        logger.log("[Gemini] Peak image prepared (base64 length=\(peakImage.count))")
+
+        // Extract metrics and convert to CSV
+        logger.log("[Gemini] Extracting per-frame metrics…")
+        let metrics = extractAllFrameMetrics(potential, objectFrames: objectFrames)
+        logger.log("[Gemini] Metrics extracted rows=\(metrics.count)")
+        logger.log("[Gemini] Building CSV…")
+        let csv = metricsToCSV(metrics)
+        logger.log("[Gemini] CSV built chars=\(csv.count)")
+        let prompt = makeCSVPrompt(csv: csv, peakIndex: potential.peakFrameIndex)
+        let systemPrompt = makeSystemPrompt()
+        logger.log("[Gemini] Validation with CSV rows=\(metrics.count) and 1 image")
+        logger.log("[Gemini] Prompt head=\(self.firstWords(prompt, count: 12), privacy: .public)")
+        logger.log("[Gemini] Calling API… model=\(self.modelName, privacy: .public)")
+        let response: String
+        do {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            response = try await callGeminiAPI(images: [peakImage], prompt: prompt, systemPrompt: systemPrompt)
+            let dtMs = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+            logger.log("[Gemini] API call completed in \(dtMs) ms")
+        } catch {
+            let dtMs = Int((CFAbsoluteTimeGetCurrent()) * 1000) // coarse timing if needed
+            let nsErr = error as NSError
+            logger.error("[Gemini] API call failed in ~\(dtMs) ms: code=\(nsErr.code) domain=\(nsErr.domain, privacy: .public) desc=\(nsErr.localizedDescription, privacy: .public)")
+            return nil
+        }
+        logger.log("[Gemini] API response received len=\(response.count)")
         logger.log("[Gemini] Validation response (len=\(response.count)): \(response, privacy: .public)")
 
+        logger.log("[Gemini] Parsing response JSON…")
         guard let parsed = parseValidationResponse(response), parsed.isValid else {
             logger.warning("[Gemini] Validation parse failed or is_valid=false")
             return nil
         }
 
+        logger.log("[Gemini] Parsed: type=\(parsed.swingType.rawValue, privacy: .public) conf=\(parsed.confidence, format: .fixed(precision: 2)) start=\(parsed.startFrame) end=\(parsed.endFrame)")
         let startIdx = max(0, min(parsed.startFrame, potential.frames.count - 1))
         let endIdx = max(startIdx, min(parsed.endFrame, potential.frames.count - 1))
         let subframes = Array(potential.frames[startIdx...endIdx])
@@ -71,6 +98,7 @@ public final class GeminiValidator {
             followThrough: clamp(parsed.keyFrames.follow_through),
             recovery: clamp(parsed.keyFrames.recovery)
         )
+        logger.log("[Gemini] Local key frames (prep,back,contact,follow,recover)=\(localKF.preparation),\(localKF.backswing),\(localKF.contact),\(localKF.followThrough),\(localKF.recovery)")
         return ValidatedSwing(frames: subframes,
                               type: parsed.swingType,
                               confidence: parsed.confidence,
@@ -79,46 +107,12 @@ public final class GeminiValidator {
     }
 
 
-    // MARK: - Frame Sampling
-    
-    private func sampleFramesForValidation(_ frames: [PoseFrame], peakIndex: Int, targetCount: Int) -> [(originalIndex: Int, frame: PoseFrame)] {
-        guard frames.count > targetCount else {
-            // If we have fewer frames than target, return all
-            return frames.enumerated().map { ($0.offset, $0.element) }
+    // MARK: - Single-frame render
+    private func renderSingleFrame(_ frame: PoseFrame) async throws -> String {
+        if let data = Self.renderSkeletonPNG(frame: frame, width: 480, height: 480) {
+            return data.base64EncodedString()
         }
-        
-        var selectedIndices: Set<Int> = []
-        
-        // Always include first and last frames
-        selectedIndices.insert(0)
-        selectedIndices.insert(frames.count - 1)
-        
-        // Always include peak frame
-        selectedIndices.insert(peakIndex)
-        
-        // Add frames around the peak (higher density near peak)
-        let nearPeakOffsets = [-6, -3, 3, 6]
-        for offset in nearPeakOffsets {
-            let idx = peakIndex + offset
-            if idx >= 0 && idx < frames.count {
-                selectedIndices.insert(idx)
-            }
-        }
-        
-        // If we need more frames, add evenly distributed ones
-        while selectedIndices.count < targetCount && selectedIndices.count < frames.count {
-            let step = frames.count / targetCount
-            for i in stride(from: 0, to: frames.count, by: step) {
-                selectedIndices.insert(i)
-                if selectedIndices.count >= targetCount { break }
-            }
-        }
-        
-        // Convert to sorted array and return with original indices
-        let sortedIndices = selectedIndices.sorted()
-        return sortedIndices.prefix(targetCount).map { idx in
-            (originalIndex: idx, frame: frames[idx])
-        }
+        return ""
     }
 
     // MARK: - Helper Methods (Scaffold)
@@ -156,13 +150,14 @@ public final class GeminiValidator {
     }
 
     // Networking: call Gemini generateContent with text + inline image data
-    private func callGeminiAPI(images: [String], prompt: String) async throws -> String {
+    private func callGeminiAPI(images: [String], prompt: String, systemPrompt: String? = nil) async throws -> String {
         struct Part: Encodable { let text: String?; let inline_data: InlineData? }
         struct InlineData: Encodable { let mime_type: String; let data: String }
         struct Content: Encodable { let parts: [Part] }
         struct RequestBody: Encodable {
             let contents: [Content]
             let generationConfig: GenerationConfig
+            let systemInstruction: Content?
         }
         struct GenerationConfig: Encodable {
             let temperature: Double
@@ -184,21 +179,29 @@ public final class GeminiValidator {
         let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(apiKey)"
         guard let url = URL(string: urlString) else { throw URLError(.badURL) }
 
-        var parts: [Part] = [Part(text: prompt, inline_data: nil)]
+        var parts: [Part] = []
+        parts.append(Part(text: prompt, inline_data: nil))
         for img in images {
             if img.isEmpty { continue }
             parts.append(Part(text: nil, inline_data: InlineData(mime_type: "image/png", data: img)))
         }
 
+        let sysContent = (systemPrompt?.isEmpty == false) ? Content(parts: [Part(text: systemPrompt!, inline_data: nil)]) : nil
         let body = RequestBody(
             contents: [Content(parts: parts)],
-            generationConfig: GenerationConfig(temperature: 0.2, topK: 40, topP: 0.95, maxOutputTokens: 16000)
+            generationConfig: GenerationConfig(temperature: 0.2, topK: 40, topP: 0.95, maxOutputTokens: 16000),
+            systemInstruction: sysContent
         )
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 60
         request.httpBody = try JSONEncoder().encode(body)
+
+        // Debug log sanitized request
+        let imageSummaries: [String] = images.enumerated().map { idx, img in "image[\(idx)]: png, base64Len=\(img.count)" }
+        // (debug logs removed)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -213,60 +216,52 @@ public final class GeminiValidator {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    // Prompt construction
-    private func makeValidationPrompt(potential: PotentialSwing, sampledFrameIndices: [Int]) -> String {
-        let frameDescription = sampledFrameIndices.enumerated().map { idx, originalIdx in
-            "Frame \(idx): original frame \(originalIdx)"
-        }.joined(separator: ", ")
-        
+    // Prompt construction for CSV-based validation
+    private func makeCSVPrompt(csv: String, peakIndex: Int) -> String {
         return """
-        Analyze these \(sampledFrameIndices.count) sampled frames from a sequence of \(potential.frames.count) frames showing a potential tennis swing.
-        These frames are sampled from the original sequence at indices: \(sampledFrameIndices.map(String.init).joined(separator: ", "))
-        The peak motion occurs at original frame \(potential.peakFrameIndex).
+        The attached image is the peak-velocity frame. Below is the CSV time series for all frames.
 
-        Tasks:
-        1. Confirm if this is a valid tennis swing
-        2. Identify exact start/end frames (use ORIGINAL frame numbers from 0 to \(potential.frames.count - 1))
-        3. Classify swing type by observing body rotation and hand grip (assume right-handed player):
-           
-           FOREHAND vs BACKHAND Detection:
-           - FOREHAND: 
-             * Body rotates COUNTER-CLOCKWISE (when viewed from above)
-             * Torso turns from right to left during swing
-             * ALWAYS uses ONE hand on racket
-             * Right shoulder moves forward through contact
-             * Swing path goes from player's right side to left side
-           
-           - BACKHAND:
-             * Body rotates CLOCKWISE (when viewed from above)  
-             * Torso turns from left to right during swing
-             * USUALLY uses TWO hands on racket (but can be one-handed)
-             * Left shoulder moves forward through contact
-             * Swing path goes from player's left side to right side
-        
-        4. Identify the ORIGINAL frame index for each key moment:
-           - Preparation stance
-           - Peak of backswing
-           - Ball contact
-           - Maximum follow-through
-           - Recovery position
+        CSV columns:
+        wristVel,wristX,wristY,elbowAng,hipRot,racketX,racketY,racketDist
 
-        Important: All frame numbers in your response should refer to the ORIGINAL sequence of \(potential.frames.count) frames (0..\(potential.frames.count - 1)), not the sampled frames.
+        CSV data:
+        \(csv)
+        """
+    }
 
-        Return ONLY JSON (no prose, no markdown fences):
+    private func makeSystemPrompt() -> String {
+        return """
+        ROLE: Expert tennis swing analyst and strict JSON generator.
+
+        INPUTS:
+        - One peak-velocity frame image
+        - CSV for all frames with columns: wristVel,wristX,wristY,elbowAng,hipRot,racketX,racketY,racketDist
+
+        STRATEGY:
+        1) Use CSV patterns to determine swing type and key moments.
+        2) Cross-check with the image for plausibility at peak.
+        3) When racket fields are empty, proceed using body metrics only.
+        4) Use these cues:
+           - preparation: low wristVel, small racketDist
+           - backswing: wristX/racketX at extreme opposite to follow-through
+           - contact: peak wristVel, large racketDist (~0.7+), wristY/racketY ~0.4-0.6
+           - follow_through: wristX/racketX beyond contact, racketDist decreasing
+           - recovery: velocities declining, return toward center
+
+        OUTPUT FORMAT (JSON only, no prose):
         {
-            "is_valid_swing": boolean,
-            "swing_type": "forehand" | "backhand" | "unknown",
-            "start_frame": number,
-            "end_frame": number,
-            "confidence": number,
-            "key_frames": {
-                "preparation": number,
-                "backswing": number,
-                "contact": number,
-                "follow_through": number,
-                "recovery": number
-            }
+          "is_valid_swing": boolean,
+          "swing_type": "forehand" | "backhand",
+          "start_frame": number,
+          "end_frame": number,
+          "confidence": number,
+          "key_frames": {
+            "preparation": number,
+            "backswing": number,
+            "contact": number,
+            "follow_through": number,
+            "recovery": number
+          }
         }
         """
     }
@@ -433,6 +428,99 @@ public final class GeminiValidator {
         (.rightHip, .rightKnee), (.rightKnee, .rightAnkle),
         (.leftHip, .root), (.rightHip, .root)
     ]
+}
+
+// MARK: - CSV metrics extraction (fileprivate helpers)
+fileprivate struct ValidationFrameMetric {
+    let index: Int
+    let timestamp: Double
+    let wristVelocity: Double
+    let wristRelativeX: Double
+    let wristHeight: Double
+    let elbowAngle: Double
+    let hipRotation: Double
+    let racketX: Double?
+    let racketY: Double?
+    let racketWristDist: Double?
+}
+
+fileprivate extension GeminiValidator {
+    func metricsToCSV(_ metrics: [ValidationFrameMetric]) -> String {
+        var csv = "idx,time,wristVel,wristX,wristY,elbowAng,hipRot,racketX,racketY,racketDist\n"
+        for m in metrics {
+            var row: [String] = []
+            row.append(String(m.index))
+            row.append(String(format: "%.3f", m.timestamp))
+            row.append(String(format: "%.2f", m.wristVelocity))
+            row.append(String(format: "%.2f", m.wristRelativeX))
+            row.append(String(format: "%.2f", m.wristHeight))
+            row.append(String(format: "%.2f", m.elbowAngle))
+            row.append(String(format: "%.2f", m.hipRotation))
+            row.append(m.racketX.map { String(format: "%.2f", $0) } ?? "")
+            row.append(m.racketY.map { String(format: "%.2f", $0) } ?? "")
+            row.append(m.racketWristDist.map { String(format: "%.2f", $0) } ?? "")
+            csv += row.joined(separator: ",") + "\n"
+        }
+        return csv
+    }
+
+    func extractAllFrameMetrics(_ potential: PotentialSwing,
+                                objectFrames: [ObjectDetectionFrame]) -> [ValidationFrameMetric] {
+        return potential.frames.enumerated().map { index, frame in
+            let rightWrist = frame.joints[.rightWrist] ?? CGPoint(x: 0.5, y: 0.5)
+            let rightElbow = frame.joints[.rightElbow] ?? CGPoint(x: 0.55, y: 0.55)
+            let rightShoulder = frame.joints[.rightShoulder] ?? CGPoint(x: 0.6, y: 0.6)
+            let leftHip = frame.joints[.leftHip] ?? CGPoint(x: 0.4, y: 0.4)
+            let rightHip = frame.joints[.rightHip] ?? CGPoint(x: 0.6, y: 0.4)
+
+            let centerX = (leftHip.x + rightHip.x) / 2
+            let objectFrame = findClosestObjectFrame(timestamp: frame.timestamp, in: objectFrames)
+
+            var racketX: Double? = nil
+            var racketY: Double? = nil
+            var racketWristDist: Double? = nil
+            if let racket = objectFrame?.racket {
+                let racketCenter = CGPoint(x: racket.boundingBox.midX, y: racket.boundingBox.midY)
+                let relX = Double((racketCenter.x - centerX) * 2.0)
+                racketX = max(-1.0, min(1.0, relX))
+                racketY = Double(racketCenter.y)
+                let dist = Double(sqrt(pow(racketCenter.x - rightWrist.x, 2) + pow(racketCenter.y - rightWrist.y, 2)))
+                racketWristDist = dist
+            }
+
+            let hipRot = atan2(rightHip.y - leftHip.y, rightHip.x - leftHip.x)
+            let elbowAng = calculateAngleBetweenPoints(p1: rightShoulder, p2: rightElbow, p3: rightWrist)
+            let wristRelX = max(-1.0, min(1.0, Double((rightWrist.x - centerX) * 2.0)))
+
+            let velocity = index < potential.angularVelocities.count ? Double(potential.angularVelocities[index]) : 0.0
+
+            return ValidationFrameMetric(
+                index: index,
+                timestamp: frame.timestamp,
+                wristVelocity: velocity,
+                wristRelativeX: wristRelX,
+                wristHeight: Double(rightWrist.y),
+                elbowAngle: elbowAng,
+                hipRotation: Double(hipRot),
+                racketX: racketX,
+                racketY: racketY,
+                racketWristDist: racketWristDist
+            )
+        }
+    }
+
+    func findClosestObjectFrame(timestamp: TimeInterval,
+                                in frames: [ObjectDetectionFrame]) -> ObjectDetectionFrame? {
+        return frames.min(by: { abs($0.timestamp - timestamp) < abs($1.timestamp - timestamp) })
+    }
+
+    func calculateAngleBetweenPoints(p1: CGPoint, p2: CGPoint, p3: CGPoint) -> Double {
+        let v1 = CGPoint(x: p1.x - p2.x, y: p1.y - p2.y)
+        let v2 = CGPoint(x: p3.x - p2.x, y: p3.y - p2.y)
+        let dot = v1.x * v2.x + v1.y * v2.y
+        let det = v1.x * v2.y - v1.y * v2.x
+        return abs(atan2(det, dot))
+    }
 }
 
 

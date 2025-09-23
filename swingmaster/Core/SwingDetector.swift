@@ -13,6 +13,7 @@ public struct PotentialSwing: Sendable {
     public let peakFrameIndex: Int
     public let peakVelocity: Float
     public let timestamp: TimeInterval
+    public let angularVelocities: [Float]
 }
 
 public final class SwingDetector {
@@ -97,7 +98,8 @@ public final class SwingDetector {
         return PotentialSwing(frames: subframes,
                               peakFrameIndex: localPeakIndex,
                               peakVelocity: peakVelocity,
-                              timestamp: ts)
+                              timestamp: ts,
+                              angularVelocities: Array(metrics.angularVelocities[startIndex...endIndex]))
     }
 }
 
