@@ -34,6 +34,13 @@ struct AnalysisView: View {
     @State private var proVideoAspectRatio: CGFloat = 16.0/9.0
     @State private var proCurrentTime: Double = 0
     @State private var proIsPlaying: Bool = false
+    @State private var proSegmentStart: Double? = nil
+    @State private var proSegmentEnd: Double? = nil
+
+    // MARK: - Skeleton state
+    @State private var showSkeleton: Bool = false
+    @State private var currentUserPose: PoseFrame? = nil
+    @State private var currentProPose: PoseFrame? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -41,54 +48,70 @@ struct AnalysisView: View {
                 // Base Layer: Full-screen video
                 videoLayer(geometry: geometry)
                 
-                // Overlay Layer 1: Trajectory visualization
+                // Overlay Layer 1: Skeleton or Trajectory visualization
                 if let shot = shots.first(where: { $0.id == selectedShotID }) {
-                    if isComparing {
-                        // Trajectory only on left (user) side
-                        HStack(spacing: 1) { // Match the video spacing
+                    if showSkeleton {
+                        if isComparing {
+                            HStack(spacing: 1) {
+                                SkeletonOverlay(pose: currentUserPose, videoAspectRatio: videoAspectRatio)
+                                    .frame(width: geometry.size.width / 2)
+                                    .allowsHitTesting(false)
+                                SkeletonOverlay(pose: currentProPose, videoAspectRatio: proVideoAspectRatio)
+                                    .frame(width: geometry.size.width / 2)
+                                    .allowsHitTesting(false)
+                            }
+                        } else {
+                            SkeletonOverlay(pose: currentUserPose, videoAspectRatio: videoAspectRatio)
+                                .allowsHitTesting(false)
+                        }
+                    } else {
+                        if isComparing {
+                            // Trajectory only on left (user) side
+                            HStack(spacing: 1) { // Match the video spacing
+                                TrajectoryOverlay(
+                                    trajectoriesByType: trajectoryCache[shot.id] ?? [:],
+                                    enabledTrajectories: enabledTrajectories,
+                                    currentTime: currentShotRelativeTime(shot: shot),
+                                    shotDuration: max(0, shot.endTime - shot.startTime),
+                                    videoAspectRatio: videoAspectRatio // Keep original aspect ratio
+                                )
+                                .frame(width: geometry.size.width / 2)
+                                .clipped() // Match video clipping
+                                .allowsHitTesting(false)
+                                
+                                Spacer()
+                                    .frame(width: geometry.size.width / 2)
+                            }
+                        } else {
+                            // Original full-width trajectory
                             TrajectoryOverlay(
                                 trajectoriesByType: trajectoryCache[shot.id] ?? [:],
                                 enabledTrajectories: enabledTrajectories,
                                 currentTime: currentShotRelativeTime(shot: shot),
                                 shotDuration: max(0, shot.endTime - shot.startTime),
-                                videoAspectRatio: videoAspectRatio // Keep original aspect ratio
+                                videoAspectRatio: videoAspectRatio
                             )
-                            .frame(width: geometry.size.width / 2)
-                            .clipped() // Match video clipping
                             .allowsHitTesting(false)
-                            
-                            Spacer()
-                                .frame(width: geometry.size.width / 2)
                         }
-                    } else {
-                        // Original full-width trajectory
+
+                        // Task handlers remain the same
                         TrajectoryOverlay(
-                            trajectoriesByType: trajectoryCache[shot.id] ?? [:],
-                            enabledTrajectories: enabledTrajectories,
-                            currentTime: currentShotRelativeTime(shot: shot),
-                            shotDuration: max(0, shot.endTime - shot.startTime),
-                            videoAspectRatio: videoAspectRatio
+                            trajectoriesByType: [:],
+                            enabledTrajectories: [],
+                            currentTime: 0,
+                            shotDuration: 0,
+                            videoAspectRatio: 1
                         )
-                        .allowsHitTesting(false)
-                    }
-                    
-                    // Task handlers remain the same
-                    TrajectoryOverlay(
-                        trajectoriesByType: [:],
-                        enabledTrajectories: [],
-                        currentTime: 0,
-                        shotDuration: 0,
-                        videoAspectRatio: 1
-                    )
-                    .opacity(0)
-                    .task(id: enabledTrajectories) { 
-                        if let url = videoURL {
-                            await precomputeIfNeeded(for: shot, videoURL: url) 
+                        .opacity(0)
+                        .task(id: enabledTrajectories) { 
+                            if let url = videoURL {
+                                await precomputeIfNeeded(for: shot, videoURL: url) 
+                            }
                         }
-                    }
-                    .task(id: selectedShotID) {
-                        if let url = videoURL {
-                            await precomputeIfNeeded(for: shot, videoURL: url)
+                        .task(id: selectedShotID) {
+                            if let url = videoURL {
+                                await precomputeIfNeeded(for: shot, videoURL: url)
+                            }
                         }
                     }
                 }
@@ -109,7 +132,8 @@ struct AnalysisView: View {
                         // Trajectory selector row
                         TrajectorySelector(
                             enabledTrajectories: $enabledTrajectories,
-                            isComparing: $isComparing
+                            isComparing: $isComparing,
+                            showSkeleton: $showSkeleton
                         )
                         .padding(.horizontal, Spacing.small) // 8pt per design system
                         .padding(.vertical, Spacing.small)
@@ -156,6 +180,23 @@ struct AnalysisView: View {
                 playSegment(shot)
             }
         }
+        .onChange(of: currentTime) { _, _ in
+            guard showSkeleton, let shot = shots.first(where: { $0.id == selectedShotID }) else { return }
+            currentUserPose = nearestPose(in: shot.paddedPoseFrames, at: currentTime)
+            if isComparing, let pro = proShot {
+                let userOffset = max(0, currentTime - shot.startTime)
+                let clampedOffset = min(userOffset, max(0, pro.endTime - pro.startTime))
+                let proTime = pro.startTime + clampedOffset
+                currentProPose = nearestPose(in: pro.paddedPoseFrames, at: proTime)
+                // Keep pro player time loosely in sync with mapped time
+                if abs(proCurrentTime - proTime) > 0.05 {
+                    proCurrentTime = proTime
+                }
+            } else {
+                currentProPose = nil
+            }
+        }
+        // Decouple pro playback so pro shot can finish even if user shot is shorter
         .onChange(of: enabledTrajectories) { _, _ in
             // Mirror left-side precompute: ensure pro trajectories update when selection changes
             if isComparing, let shot = proShot {
@@ -180,6 +221,8 @@ struct AnalysisView: View {
                     loadProAspectRatio(from: proURL)
                 }
                 if let shot = proShot {
+                    proSegmentStart = shot.startTime
+                    proSegmentEnd = shot.endTime
                     var map: [TrajectoryType: [TrajectoryPoint]] = [:]
                     for t in enabledTrajectories {
                         map[t] = TrajectoryComputer.compute(
@@ -196,12 +239,37 @@ struct AnalysisView: View {
                         let userOffset = max(0, currentTime - userShot.startTime)
                         proCurrentTime = shot.startTime + userOffset
                         proIsPlaying = isPlaying
+                        if showSkeleton {
+                            let clampedOffset = min(userOffset, max(0, shot.endTime - shot.startTime))
+                            let proTime = shot.startTime + clampedOffset
+                            currentProPose = nearestPose(in: shot.paddedPoseFrames, at: proTime)
+                        }
                     }
                 }
             } else {
                 proShot = nil
                 proTrajectories = [:]
                 proIsPlaying = false
+                currentProPose = nil
+                proSegmentStart = nil
+                proSegmentEnd = nil
+            }
+        }
+        .onChange(of: showSkeleton) { _, enabled in
+            if enabled {
+                if let shot = shots.first(where: { $0.id == selectedShotID }) {
+                    currentUserPose = nearestPose(in: shot.paddedPoseFrames, at: currentTime)
+                }
+                if isComparing, let pro = proShot, let user = shots.first(where: { $0.id == selectedShotID }) {
+                    let userOffset = max(0, currentTime - user.startTime)
+                    let clampedOffset = min(userOffset, max(0, pro.endTime - pro.startTime))
+                    let proTime = pro.startTime + clampedOffset
+                    currentProPose = nearestPose(in: pro.paddedPoseFrames, at: proTime)
+                }
+                trajectoryCache.removeAll()
+            } else {
+                currentUserPose = nil
+                currentProPose = nil
             }
         }
         
@@ -249,23 +317,28 @@ struct AnalysisView: View {
                         url: proURL,
                         currentTime: $proCurrentTime,
                         isPlaying: $proIsPlaying, // Independent play/pause
-                        showsControls: false
+                        showsControls: false,
+                        segmentStart: proSegmentStart,
+                        segmentEnd: proSegmentEnd,
+                        onSegmentComplete: {
+                            proIsPlaying = false
+                        }
                     )
                     .frame(width: geometry.size.width / 2)
                     .clipped() // Handle narrower aspect ratio
                     .overlay(proVideoLabel, alignment: .topLeading)
                     .overlay(alignment: .center) {
-                        if let pro = proShot {
-                            TrajectoryOverlay(
-                                trajectoriesByType: proTrajectories,
-                                enabledTrajectories: enabledTrajectories,
-                                // Show full pro trajectory in compare mode
-                                currentTime: max(0, pro.endTime - pro.startTime),
-                                shotDuration: max(0, pro.endTime - pro.startTime),
-                                videoAspectRatio: proVideoAspectRatio
-                            )
-                        } else {
-                            EmptyView()
+                        if !showSkeleton {
+                            if let pro = proShot {
+                                TrajectoryOverlay(
+                                    trajectoriesByType: proTrajectories,
+                                    enabledTrajectories: enabledTrajectories,
+                                    // Show full pro trajectory in compare mode
+                                    currentTime: max(0, pro.endTime - pro.startTime),
+                                    shotDuration: max(0, pro.endTime - pro.startTime),
+                                    videoAspectRatio: proVideoAspectRatio
+                                )
+                            }
                         }
                     }
                 } else {
@@ -371,10 +444,12 @@ struct AnalysisView: View {
             Task { await precomputeIfNeeded(for: shot, videoURL: url) }
         }
         isPlaying = true
-        // Align and start pro playback if available
+        // Align and start pro playback if available; let pro play full shot even if user shot is shorter
         if isComparing, let pro = proShot {
             proCurrentTime = pro.startTime
             proIsPlaying = true
+            proSegmentStart = pro.startTime
+            proSegmentEnd = pro.endTime
         }
     }
     
@@ -469,6 +544,25 @@ extension AnalysisView {
         guard let userShot = shots.first(where: { $0.id == selectedShotID }), let pro = proShot else { return 0 }
         let userOffset = max(0, currentTime - userShot.startTime)
         return pro.startTime + userOffset
+    }
+
+    fileprivate func nearestPose(in frames: [PoseFrame], at time: Double) -> PoseFrame? {
+        if frames.isEmpty { return nil }
+        // Binary search for closest frame at absolute time
+        var lo = 0
+        var hi = frames.count - 1
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if frames[mid].timestamp < time {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        }
+        if lo == 0 { return frames[0] }
+        let a = frames[lo - 1]
+        let b = frames[lo]
+        return abs(a.timestamp - time) <= abs(b.timestamp - time) ? a : b
     }
 }
 

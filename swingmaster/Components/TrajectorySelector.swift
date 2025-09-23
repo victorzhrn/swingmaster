@@ -11,6 +11,7 @@ import UIKit
 struct TrajectorySelector: View {
     @Binding var enabledTrajectories: Set<TrajectoryType>
     @Binding var isComparing: Bool
+    @Binding var showSkeleton: Bool
     
     // Store the last selected trajectory for better UX
     @AppStorage("lastSelectedTrajectory") private var lastSelectedTrajectory: String = "racket"
@@ -22,13 +23,14 @@ struct TrajectorySelector: View {
     enum TrajectoryOption: String, CaseIterable {
         case racket = "Racket"
         case wrist = "Wrist"
+        case skeleton = "Skeleton"
         case off = "Off"
         
         var trajectoryType: TrajectoryType? {
             switch self {
             case .racket: return .racketCenter
             case .wrist: return .rightWrist
-            case .off: return nil
+            case .skeleton, .off: return nil
             }
         }
         
@@ -36,9 +38,9 @@ struct TrajectorySelector: View {
             // Use a consistent tennis green for all trajectory types
             // Creates a more cohesive, professional look
             switch self {
-            case .racket, .wrist: 
+            case .racket, .wrist, .skeleton:
                 return TennisColors.tennisGreen
-            case .off: 
+            case .off:
                 return .clear
             }
         }
@@ -115,12 +117,19 @@ struct TrajectorySelector: View {
     }
     
     private func updateEnabledTrajectories(for option: TrajectoryOption) {
-        // Clear all trajectories first
-        enabledTrajectories.removeAll()
-        
-        // Add the selected trajectory if not "off"
-        if let trajectoryType = option.trajectoryType {
-            enabledTrajectories.insert(trajectoryType)
+        switch option {
+        case .skeleton:
+            showSkeleton = true
+            enabledTrajectories.removeAll()
+        case .off:
+            showSkeleton = false
+            enabledTrajectories.removeAll()
+        case .racket, .wrist:
+            showSkeleton = false
+            enabledTrajectories.removeAll()
+            if let trajectoryType = option.trajectoryType {
+                enabledTrajectories.insert(trajectoryType)
+            }
         }
     }
 }

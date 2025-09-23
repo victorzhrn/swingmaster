@@ -13,11 +13,21 @@ import Vision
 /// Lightweight overlay for visualizing pose joints and bones.
 struct SkeletonOverlay: View {
     let pose: PoseFrame?
+    /// Optional video aspect ratio (width/height). When provided, the overlay
+    /// aligns skeleton drawing to the letterboxed video rect instead of filling
+    /// the entire view bounds.
+    var videoAspectRatio: CGFloat? = nil
 
     var body: some View {
         GeometryReader { geo in
             Canvas { context, size in
                 guard let pose = pose else { return }
+                let videoRect: CGRect
+                if let ar = videoAspectRatio {
+                    videoRect = Self.calculateVideoRect(viewSize: size, videoAspectRatio: ar)
+                } else {
+                    videoRect = CGRect(origin: .zero, size: size)
+                }
 
                 // Draw bones
                 for (a, b) in Self.bonePairs {
@@ -25,9 +35,11 @@ struct SkeletonOverlay: View {
                     let ca = pose.confidences[a] ?? 0
                     let cb = pose.confidences[b] ?? 0
                     let minConf = min(ca, cb)
-                    let color = Self.color(for: minConf).opacity(0.7 + Double(minConf) * 0.3)
-                    let p1 = Self.convert(point: pa, in: size)
-                    let p2 = Self.convert(point: pb, in: size)
+                    // Skip very low confidence connections entirely
+                    if minConf < Self.minimumConfidenceToDraw { continue }
+                    let color = Self.color(for: minConf).opacity(Self.opacity(for: minConf))
+                    let p1 = Self.map(point: pa, into: videoRect)
+                    let p2 = Self.map(point: pb, into: videoRect)
                     var path = Path()
                     path.move(to: p1)
                     path.addLine(to: p2)
@@ -42,8 +54,9 @@ struct SkeletonOverlay: View {
                     }
                     
                     let conf = pose.confidences[name] ?? 0
-                    let color = Self.color(for: conf).opacity(0.7 + Double(conf) * 0.3)
-                    let pt = Self.convert(point: p, in: size)
+                    if conf < Self.minimumConfidenceToDraw { continue }
+                    let color = Self.color(for: conf).opacity(Self.opacity(for: conf))
+                    let pt = Self.map(point: p, into: videoRect)
                     let dot = Path(ellipseIn: CGRect(x: pt.x - 4, y: pt.y - 4, width: 8, height: 8))
                     context.fill(dot, with: .color(color))
                 }
@@ -55,11 +68,39 @@ struct SkeletonOverlay: View {
 
     // MARK: - Helpers
 
-    /// Convert from Vision's normalized (origin bottom-left) to SwiftUI's (origin top-left)
-    private static func convert(point: CGPoint, in size: CGSize) -> CGPoint {
-        let x = point.x * size.width
-        let y = (1.0 - point.y) * size.height
+    /// Map Vision normalized point (origin bottom-left) into the specified rect
+    /// within the view's coordinate space (origin top-left).
+    private static func map(point: CGPoint, into rect: CGRect) -> CGPoint {
+        let x = rect.minX + point.x * rect.width
+        let y = rect.minY + (1.0 - point.y) * rect.height
         return CGPoint(x: x, y: y)
+    }
+
+    /// Calculate the letterboxed video rect for a given aspect ratio.
+    private static func calculateVideoRect(viewSize: CGSize, videoAspectRatio: CGFloat) -> CGRect {
+        let viewAspect = viewSize.width / viewSize.height
+        var videoWidth: CGFloat
+        var videoHeight: CGFloat
+        if videoAspectRatio > viewAspect {
+            videoWidth = viewSize.width
+            videoHeight = viewSize.width / videoAspectRatio
+        } else {
+            videoHeight = viewSize.height
+            videoWidth = viewSize.height * videoAspectRatio
+        }
+        let x = (viewSize.width - videoWidth) / 2
+        let y = (viewSize.height - videoHeight) / 2
+        return CGRect(x: x, y: y, width: videoWidth, height: videoHeight)
+    }
+
+    private static let minimumConfidenceToDraw: Float = 0.25
+
+    /// Confidence-to-opacity mapping favoring transparency at low confidence
+    private static func opacity(for confidence: Float) -> Double {
+        // Map [0,1] -> [0.2, 1.0] with slight gamma to fade low confidence
+        let clamped = max(0, min(1, Double(confidence)))
+        let gamma = pow(clamped, 1.5)
+        return 0.2 + 0.8 * gamma
     }
 
     private static func color(for confidence: Float) -> Color {
