@@ -61,7 +61,8 @@ struct ProcessProVideosPipeline {
                 endTime: res.segment.endTime,
                 segmentMetrics: res.segmentMetrics,
                 paddedPoseFrames: res.segment.frames,
-                paddedObjectFrames: res.objectFrames
+                paddedObjectFrames: res.objectFrames,
+                keyFrameTimes: res.keyFrameTimes
             )
         }
         return BundledAnalysis(videoFileName: url.lastPathComponent, duration: duration, shots: shots)

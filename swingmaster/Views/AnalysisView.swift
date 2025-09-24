@@ -285,6 +285,15 @@ struct AnalysisView: View {
                 currentProPose = nil
             }
         }
+        // When selecting a keyframe tab in compare mode, jump pro to its corresponding keyframe
+        .onChange(of: selectedKeyframeIndex) { _, newIndex in
+            guard isComparing, let pro = proShot else { return }
+            let t = keyframeTime(for: newIndex, shot: pro)
+            proCurrentTime = t
+            if showSkeleton {
+                currentProPose = nearestPose(in: pro.paddedPoseFrames, at: t)
+            }
+        }
         
     }
 
@@ -346,8 +355,7 @@ struct AnalysisView: View {
                                 TrajectoryOverlay(
                                     trajectoriesByType: proTrajectories,
                                     enabledTrajectories: enabledTrajectories,
-                                    // Show full pro trajectory in compare mode
-                                    currentTime: max(0, pro.endTime - pro.startTime),
+                                    currentTime: currentProShotRelativeTime(shot: pro),
                                     shotDuration: max(0, pro.endTime - pro.startTime),
                                     videoAspectRatio: proVideoAspectRatio
                                 )
@@ -523,6 +531,10 @@ extension AnalysisView {
         max(0, currentTime - shot.startTime)
     }
 
+    fileprivate func currentProShotRelativeTime(shot: Shot) -> Double {
+        return max(0, proCurrentTime - shot.startTime)
+    }
+
     fileprivate func loadVideoAspectRatio(from url: URL) {
         Task {
             let asset = AVAsset(url: url)
@@ -576,6 +588,30 @@ extension AnalysisView {
         let a = frames[lo - 1]
         let b = frames[lo]
         return abs(a.timestamp - time) <= abs(b.timestamp - time) ? a : b
+    }
+
+    // Compute absolute time for a given keyframe index for a shot.
+    // Uses real keyFrameTimes when present; otherwise falls back to proportional fractions.
+    fileprivate func keyframeTime(for index: Int, shot: Shot) -> Double {
+        if let times = shot.keyFrameTimes {
+            let t: Double
+            switch index {
+            case 0: t = times.preparation
+            case 1: t = times.backswing
+            case 2: t = times.contact
+            case 3: t = times.followThrough
+            case 4: t = times.recovery
+            default:
+                let fractions: [Double] = [0.0, 1.0/3.0, 0.5, 2.0/3.0, 1.0]
+                let f = fractions[min(max(index, 0), fractions.count - 1)]
+                t = shot.startTime + f * (shot.endTime - shot.startTime)
+            }
+            return min(max(t, shot.startTime), shot.endTime)
+        } else {
+            let fractions: [Double] = [0.0, 1.0/3.0, 0.5, 2.0/3.0, 1.0]
+            let f = fractions[min(max(index, 0), fractions.count - 1)]
+            return shot.startTime + f * (shot.endTime - shot.startTime)
+        }
     }
 }
 
