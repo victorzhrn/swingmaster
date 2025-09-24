@@ -120,6 +120,7 @@ GoogleService-Info.plist
 # YOLO weights and virtual environments
 yolo/*.pt
 yolo/.venv*/
+yolo/*
 
 # Pro comparison videos
 swingmaster/ProVideos/*.mov

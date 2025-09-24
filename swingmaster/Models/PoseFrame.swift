@@ -10,19 +10,19 @@
 
 import Foundation
 import CoreGraphics
-import Vision
+// Decoupled from Vision; uses app-defined BodyJoint
 
 /// A single timestamped snapshot of detected human pose.
 public struct PoseFrame: Sendable, Codable {
     /// Presentation timestamp in seconds, relative to the source.
     public let timestamp: TimeInterval
 
-    /// Normalized joint positions keyed by Vision joint names.
-    /// Values are in Vision image space: x and y in [0,1], origin bottom-left.
-    public let joints: [VNHumanBodyPoseObservation.JointName: CGPoint]
+    /// Normalized joint positions keyed by app-defined BodyJoint names.
+    /// Values are in image space: x and y in [0,1], origin bottom-left.
+    public let joints: [BodyJoint: CGPoint]
 
     /// Confidence per joint in [0,1]. Missing joints may be absent.
-    public let confidences: [VNHumanBodyPoseObservation.JointName: Float]
+    public let confidences: [BodyJoint: Float]
     
     // Internal storage for Codable - uses String keys
     private let jointsDict: [String: CGPoint]
@@ -35,15 +35,15 @@ public struct PoseFrame: Sendable, Codable {
     }
 
     public init(timestamp: TimeInterval,
-                joints: [VNHumanBodyPoseObservation.JointName: CGPoint],
-                confidences: [VNHumanBodyPoseObservation.JointName: Float]) {
+                joints: [BodyJoint: CGPoint],
+                confidences: [BodyJoint: Float]) {
         self.timestamp = timestamp
         self.joints = joints
         self.confidences = confidences
         
         // Convert to String dictionaries for Codable
-        self.jointsDict = Dictionary(uniqueKeysWithValues: joints.map { ($0.key.rawValue.rawValue, $0.value) })
-        self.confidencesDict = Dictionary(uniqueKeysWithValues: confidences.map { ($0.key.rawValue.rawValue, $0.value) })
+        self.jointsDict = Dictionary(uniqueKeysWithValues: joints.map { ($0.key.rawValue, $0.value) })
+        self.confidencesDict = Dictionary(uniqueKeysWithValues: confidences.map { ($0.key.rawValue, $0.value) })
     }
     
     public init(from decoder: Decoder) throws {
@@ -57,18 +57,20 @@ public struct PoseFrame: Sendable, Codable {
         self.jointsDict = jointsDict
         self.confidencesDict = confidencesDict
         
-        // Convert String dictionaries back to JointName dictionaries
-        var jointsTemp: [VNHumanBodyPoseObservation.JointName: CGPoint] = [:]
-        var confidencesTemp: [VNHumanBodyPoseObservation.JointName: Float] = [:]
+        // Convert String dictionaries back to BodyJoint dictionaries
+        var jointsTemp: [BodyJoint: CGPoint] = [:]
+        var confidencesTemp: [BodyJoint: Float] = [:]
         
         for (key, value) in jointsDict {
-            let jointName = VNHumanBodyPoseObservation.JointName(rawValue: VNRecognizedPointKey(rawValue: key))
-            jointsTemp[jointName] = value
+            if let jointName = BodyJoint(rawValue: key) {
+                jointsTemp[jointName] = value
+            }
         }
         
         for (key, value) in confidencesDict {
-            let jointName = VNHumanBodyPoseObservation.JointName(rawValue: VNRecognizedPointKey(rawValue: key))
-            confidencesTemp[jointName] = value
+            if let jointName = BodyJoint(rawValue: key) {
+                confidencesTemp[jointName] = value
+            }
         }
         
         self.joints = jointsTemp

@@ -8,7 +8,7 @@
 //
 
 import SwiftUI
-import Vision
+// No Vision dependency; uses BodyJoint
 
 /// Lightweight overlay for visualizing pose joints and bones.
 struct SkeletonOverlay: View {
@@ -17,6 +17,8 @@ struct SkeletonOverlay: View {
     /// aligns skeleton drawing to the letterboxed video rect instead of filling
     /// the entire view bounds.
     var videoAspectRatio: CGFloat? = nil
+    enum ContentMode { case fit, fill }
+    var contentMode: ContentMode = .fit
 
     var body: some View {
         GeometryReader { geo in
@@ -24,7 +26,12 @@ struct SkeletonOverlay: View {
                 guard let pose = pose else { return }
                 let videoRect: CGRect
                 if let ar = videoAspectRatio {
-                    videoRect = Self.calculateVideoRect(viewSize: size, videoAspectRatio: ar)
+                    switch contentMode {
+                    case .fit:
+                        videoRect = Self.calculateVideoRectFit(viewSize: size, videoAspectRatio: ar)
+                    case .fill:
+                        videoRect = Self.calculateVideoRectFill(viewSize: size, videoAspectRatio: ar)
+                    }
                 } else {
                     videoRect = CGRect(origin: .zero, size: size)
                 }
@@ -76,8 +83,8 @@ struct SkeletonOverlay: View {
         return CGPoint(x: x, y: y)
     }
 
-    /// Calculate the letterboxed video rect for a given aspect ratio.
-    private static func calculateVideoRect(viewSize: CGSize, videoAspectRatio: CGFloat) -> CGRect {
+    /// Calculate the letterboxed (aspect fit) video rect for a given aspect ratio.
+    private static func calculateVideoRectFit(viewSize: CGSize, videoAspectRatio: CGFloat) -> CGRect {
         let viewAspect = viewSize.width / viewSize.height
         var videoWidth: CGFloat
         var videoHeight: CGFloat
@@ -87,6 +94,25 @@ struct SkeletonOverlay: View {
         } else {
             videoHeight = viewSize.height
             videoWidth = viewSize.height * videoAspectRatio
+        }
+        let x = (viewSize.width - videoWidth) / 2
+        let y = (viewSize.height - videoHeight) / 2
+        return CGRect(x: x, y: y, width: videoWidth, height: videoHeight)
+    }
+
+    /// Calculate the aspect fill video rect (cover and crop) for a given aspect ratio.
+    private static func calculateVideoRectFill(viewSize: CGSize, videoAspectRatio: CGFloat) -> CGRect {
+        let viewAspect = viewSize.width / viewSize.height
+        var videoWidth: CGFloat
+        var videoHeight: CGFloat
+        if videoAspectRatio < viewAspect {
+            // Video narrower than view: scale by height
+            videoHeight = viewSize.height
+            videoWidth = videoAspectRatio * videoHeight
+        } else {
+            // Video wider than view: scale by width
+            videoWidth = viewSize.width
+            videoHeight = videoWidth / videoAspectRatio
         }
         let x = (viewSize.width - videoWidth) / 2
         let y = (viewSize.height - videoHeight) / 2
@@ -110,7 +136,7 @@ struct SkeletonOverlay: View {
     }
 
     /// Minimal bone set covering arms, torso, legs.
-    private static let bonePairs: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = [
+    private static let bonePairs: [(BodyJoint, BodyJoint)] = [
         // Torso
         (.neck, .root),
         // Arms

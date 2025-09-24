@@ -7,13 +7,13 @@
 
 import Foundation
 import os
-import Vision
+// Vision removed from pose path
 import AVFoundation
 import ImageIO
 
 @MainActor
 public final class VideoProcessor: ObservableObject {
-    private let poseProcessor = PoseProcessor()
+    private let poseProcessor = YOLOPoseProcessor()
     private let objectDetector = TennisObjectDetector()
     private let contactDetector = ContactPointDetector()
     private let metricsCalculator = MetricsCalculator()
@@ -42,12 +42,13 @@ public final class VideoProcessor: ObservableObject {
         
         // Determine the correct orientation for the video
         let orientation = getVideoOrientation(from: url)
-        logger.log("[File] Using orientation: \(orientation.rawValue)")
+        // keep quiet per-file
         
         // Extract poses first with the correct orientation
         let poseFrames = await poseProcessor.processVideoFile(url, targetFPS: videoFPS, orientation: orientation) { [weak self] p in
             Task { @MainActor in self?.state = .extractingPoses(progress: p * 0.5) } // First 50% of progress
         }
+        if poseFrames.isEmpty { logger.error("[File] Pose extraction returned 0 frames. url=\(url.lastPathComponent, privacy: .public)") }
 
         // Extract object detection for the entire video duration
         guard !poseFrames.isEmpty else {
@@ -68,11 +69,12 @@ public final class VideoProcessor: ObservableObject {
             orientation: orientation,
             confidenceThreshold: 0.3
         )
+        // minimal logging
         
         // Update progress to complete
         await MainActor.run { self.state = .extractingPoses(progress: 1.0) }
         
-        logger.log("[File] Extracted \(poseFrames.count) pose frames and \(objectFrames.count) object frames")
+        logger.log("[File] Extracted \(poseFrames.count) pose, \(objectFrames.count) objects")
         return (poseFrames, objectFrames)
     }
 
@@ -118,7 +120,7 @@ public final class VideoProcessor: ObservableObject {
         // 3) Detect potential swings
         self.state = .detectingSwings
         let potentialSwings = swingDetector.detectPotentialSwings(frames: poseFrames, metrics: metrics)
-        logger.log("[File] Detected \(potentialSwings.count) potential swing(s)")
+        logger.log("[File] Detected \(potentialSwings.count) potential swings")
         for (idx, c) in potentialSwings.enumerated() {
             let startTS = c.frames.first?.timestamp ?? 0
             let endTS = c.frames.last?.timestamp ?? 0
@@ -132,7 +134,7 @@ public final class VideoProcessor: ObservableObject {
         if !potentialSwings.isEmpty {
             for (idx, candidate) in potentialSwings.enumerated() {
                 self.state = .validatingSwings(current: idx + 1, total: potentialSwings.count)
-                logger.log("[File] Sending candidate #\(idx + 1)/\(potentialSwings.count) to validator…")
+            // reduce noise
                 // Filter object frames for candidate window
                 let candidateStart = candidate.frames.first?.timestamp ?? 0
                 let candidateEnd = candidate.frames.last?.timestamp ?? 0
@@ -141,9 +143,9 @@ public final class VideoProcessor: ObservableObject {
                 }
                 if let vs = try? await geminiValidator.validateSwing(candidate, objectFrames: relevantObjectFrames) {
                     validated.append(vs)
-                    logger.log("[File] Validation OK: type=\(vs.type.rawValue, privacy: .public) confidence=\(vs.confidence, format: .fixed(precision: 2)) frames=\(vs.frames.count)")
+                    // minimal
                 } else {
-                    logger.warning("[File] Validation returned nil for candidate #\(idx + 1)")
+                    // minimal
                 }
             }
         }
@@ -276,7 +278,7 @@ public final class VideoProcessor: ObservableObject {
         }
     }
 
-    private func presenceRate(frames: [PoseFrame], joint: VNHumanBodyPoseObservation.JointName) -> Double {
+    private func presenceRate(frames: [PoseFrame], joint: BodyJoint) -> Double {
         guard !frames.isEmpty else { return 0 }
         var countPresent = 0
         for f in frames { if f.joints[joint] != nil { countPresent += 1 } }

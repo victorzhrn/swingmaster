@@ -10,7 +10,7 @@ import Foundation
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
-import Vision
+// No Vision dependency; uses BodyJoint
 import os
 
 public struct ValidatedSwing: Sendable, Codable {
@@ -430,7 +430,7 @@ public final class GeminiValidator {
         return CGPoint(x: x, y: y)
     }
 
-    private static let bonePairs: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = [
+    private static let bonePairs: [(BodyJoint, BodyJoint)] = [
         (.neck, .root),
         (.leftShoulder, .leftElbow), (.leftElbow, .leftWrist),
         (.rightShoulder, .rightElbow), (.rightElbow, .rightWrist),

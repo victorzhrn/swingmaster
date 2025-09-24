@@ -47,7 +47,8 @@ struct CameraView: View {
                 }
 
                 if showSkeleton {
-                    SkeletonOverlay(pose: camera.latestPose)
+                    // Assume 16:9 capture for AVCaptureVideoPreviewLayer; pass aspect and use fill to match preview layer
+                    SkeletonOverlay(pose: camera.latestPose, videoAspectRatio: 16.0/9.0, contentMode: .fill)
                         .ignoresSafeArea()
                         .transition(.opacity)
                 }

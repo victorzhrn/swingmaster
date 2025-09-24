@@ -8,7 +8,7 @@
 
 import Foundation
 import CoreGraphics
-import Vision
+// No Vision dependency; uses BodyJoint
 
 /// Joint angle measurements for a single frame.
 public struct JointAngles: Sendable {
@@ -86,8 +86,8 @@ public final class MetricsCalculator {
 
         for (index, frame) in frames.enumerated() {
             let side = chooseDominantSide(in: frame)
-            let shoulderName: VNHumanBodyPoseObservation.JointName = (side == .right) ? .rightShoulder : .leftShoulder
-            let wristName: VNHumanBodyPoseObservation.JointName = (side == .right) ? .rightWrist : .leftWrist
+            let shoulderName: BodyJoint = (side == .right) ? .rightShoulder : .leftShoulder
+            let wristName: BodyJoint = (side == .right) ? .rightWrist : .leftWrist
 
             guard let shoulder = frame.joints[shoulderName], let wrist = frame.joints[wristName] else {
                 previousAngle = nil
@@ -121,7 +121,7 @@ public final class MetricsCalculator {
 
         for (index, frame) in frames.enumerated() {
             let side = chooseDominantSide(in: frame)
-            let wristName: VNHumanBodyPoseObservation.JointName = (side == .right) ? .rightWrist : .leftWrist
+            let wristName: BodyJoint = (side == .right) ? .rightWrist : .leftWrist
 
             guard let wrist = frame.joints[wristName] else {
                 previousPoint = nil
@@ -186,7 +186,7 @@ public final class MetricsCalculator {
     public func calculateWristHeights(_ frames: [PoseFrame]) -> [Float] {
         return frames.map { frame in
             let side = chooseDominantSide(in: frame)
-            let wristName: VNHumanBodyPoseObservation.JointName = (side == .right) ? .rightWrist : .leftWrist
+            let wristName: BodyJoint = (side == .right) ? .rightWrist : .leftWrist
             guard let p = frame.joints[wristName] else { return 0 }
             return Float(p.y)
         }
@@ -206,7 +206,7 @@ public final class MetricsCalculator {
         let contactWristPoint: CGPoint = {
             let frame = segment[min(max(0, contactIndex), segment.count - 1)]
             let side = chooseDominantSide(in: frame)
-            let wristName: VNHumanBodyPoseObservation.JointName = (side == .right) ? .rightWrist : .leftWrist
+            let wristName: BodyJoint = (side == .right) ? .rightWrist : .leftWrist
             return frame.joints[wristName] ?? .zero
         }()
 
@@ -255,9 +255,9 @@ public final class MetricsCalculator {
         return .right
     }
 
-    private func angleAtJoint(center: VNHumanBodyPoseObservation.JointName,
-                              a: VNHumanBodyPoseObservation.JointName,
-                              b: VNHumanBodyPoseObservation.JointName,
+    private func angleAtJoint(center: BodyJoint,
+                              a: BodyJoint,
+                              b: BodyJoint,
                               in frame: PoseFrame) -> Float? {
         guard let c = frame.joints[center], let pa = frame.joints[a], let pb = frame.joints[b] else { return nil }
         let v1 = CGVector(dx: pa.x - c.x, dy: pa.y - c.y)

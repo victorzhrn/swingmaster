@@ -12,6 +12,7 @@ import AVFoundation
 import Vision
 import ImageIO
 import UIKit
+import os
 
 /// CameraManager is responsible for:
 /// - Requesting camera & microphone permissions
@@ -37,8 +38,8 @@ final class CameraManager: NSObject, ObservableObject {
     private let videoDataOutput = AVCaptureVideoDataOutput()
     private let videoDataQueue = DispatchQueue(label: "com.swingmaster.camera.frames", qos: .userInitiated)
 
-    // Pose processing
-    private let poseProcessor = PoseProcessor()
+    // Pose processing (YOLO v11 Pose)
+    private let poseProcessor = YOLOPoseProcessor()
     private var frameCount: Int = 0
 
     // Object detection
@@ -54,6 +55,7 @@ final class CameraManager: NSObject, ObservableObject {
     // Latest pose for UI overlay
     @Published var latestPose: PoseFrame?
     @Published var processedFPS: Double = 0
+    private let logger = Logger(subsystem: "com.swingmaster", category: "Camera")
 
     // FPS calculation
     private var fpsWindowCount: Int = 0
@@ -166,6 +168,7 @@ final class CameraManager: NSObject, ObservableObject {
             guard !self.session.isRunning else { return }
             self.session.startRunning()
             DispatchQueue.main.async { self.isSessionRunning = true }
+            // self.logger.log("[Session] Started running")
         }
     }
 
@@ -178,6 +181,7 @@ final class CameraManager: NSObject, ObservableObject {
             guard self.session.isRunning else { return }
             self.session.stopRunning()
             DispatchQueue.main.async { self.isSessionRunning = false }
+            // self.logger.log("[Session] Stopped running")
         }
     }
 
@@ -264,18 +268,20 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Map device orientation to Vision orientation (back camera)
         let orientation: CGImagePropertyOrientation = visionOrientation(from: UIDevice.current.orientation, isFront: false)
+        // logger.log("[Frame] orientation=\(orientation.rawValue) ts=\(timestamp, privacy: .public)")
 
         Task { [weak self] in
             guard let self = self else { return }
             
             // Run both detections concurrently
-            async let poseTask = self.poseProcessor.processFrame(pixelBuffer, timestamp: timestamp)
+            async let poseTask = self.poseProcessor.processFrame(pixelBuffer, timestamp: timestamp, orientation: orientation)
             async let objectTask = self.objectDetector.detectObjects(pixelBuffer, timestamp: timestamp, orientation: orientation)
             
             let (pose, objectDetection) = await (poseTask, objectTask)
             
             await MainActor.run {
                 self.latestPose = pose
+                // Minimal UI assignment without per-frame logs
                 
                 if let detection = objectDetection {
                     // Update racket detection

@@ -7,7 +7,7 @@
 
 import Foundation
 import CoreGraphics
-import Vision
+// No Vision dependency; uses BodyJoint
 
 enum TrajectoryType: String, CaseIterable, Identifiable {
     case rightWrist = "Right Wrist"
@@ -109,7 +109,7 @@ enum TrajectoryComputer {
 
     // MARK: - Extraction
 
-    private static func extractJoint(_ joint: VNHumanBodyPoseObservation.JointName,
+    private static func extractJoint(_ joint: BodyJoint,
                                      from frames: [PoseFrame],
                                      startTime: Double) -> [TrajectoryPoint] {
         frames.compactMap { frame in
