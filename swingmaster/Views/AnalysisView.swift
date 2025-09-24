@@ -152,7 +152,7 @@ struct AnalysisView: View {
                         )
 
                         Rectangle()
-                            .fill(Color.white.opacity(0.1))
+                            .fill(Color(UIColor.separator))
                             .frame(height: 0.5)
 
                         TimelineStripEnhanced(
@@ -173,7 +173,7 @@ struct AnalysisView: View {
                     .background(.thinMaterial)
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            .stroke(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08), lineWidth: 1)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal, 16)
@@ -605,9 +605,9 @@ private struct KeyframeTabs: View {
                             .font(.subheadline)
                         Text(timeTextForKeyframe(index: index))
                             .font(.caption2)
-                            .opacity(0.7)
+                            .foregroundColor(.secondary)
                     }
-                    .foregroundColor(selectedIndex == index ? TennisColors.tennisGreen : .white.opacity(0.7))
+                    .foregroundColor(selectedIndex == index ? TennisColors.tennisGreen : Color.primary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 40)
                     .background(

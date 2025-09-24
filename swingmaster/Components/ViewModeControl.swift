@@ -6,6 +6,7 @@ struct ViewModeControl: View {
     @Binding var enabledTrajectories: Set<TrajectoryType>
     @Binding var showSkeleton: Bool
     @Binding var skeletonOnly: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var isMenuOpen: Bool = false
     @State private var selectedOption: ViewOption = .wrist
@@ -34,19 +35,19 @@ struct ViewModeControl: View {
             HStack(spacing: Spacing.micro) { // 4pt spacing to match CompareToggle
                 Image(systemName: "eye")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(.primary)
                     .symbolRenderingMode(.hierarchical)
                 Text("View")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.secondary)
                 Text(selectedOption.rawValue)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.95))
+                    .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.secondary)
             }
             .padding(.horizontal, 8)
             .frame(height: 44)
@@ -67,18 +68,18 @@ struct ViewModeControl: View {
                         HStack(spacing: 8) {
                             Image(systemName: option.icon)
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundColor(.primary)
                                 .symbolRenderingMode(.hierarchical)
                                 .frame(width: 18)
                             Text(option.rawValue)
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white.opacity(0.95))
+                                .foregroundColor(.primary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.9)
                             Spacer(minLength: 8)
                             Image(systemName: "checkmark")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                                 .opacity(selectedOption == option ? 1 : 0)
                         }
                         .padding(.vertical, 12)
@@ -86,7 +87,7 @@ struct ViewModeControl: View {
                     }
                     if option != ViewOption.allCases.last {
                         Divider()
-                            .background(Color.white.opacity(0.15))
+                            .background(Color(UIColor.separator))
                     }
                 }
             }
@@ -94,7 +95,7 @@ struct ViewModeControl: View {
             .background(.thinMaterial)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .stroke(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08), lineWidth: 1)
             )
             .cornerRadius(12)
             .offset(y: -160)

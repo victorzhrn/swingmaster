@@ -38,7 +38,7 @@ struct TimelineStripEnhanced: View {
             Button(action: navigatePrev) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(canNavigatePrev ? .white.opacity(0.95) : .white.opacity(0.3))
+                    .foregroundColor(canNavigatePrev ? Color.primary : Color.secondary)
                     .frame(width: 32, height: bandHeight)
                     .contentShape(Rectangle())
             }
@@ -66,7 +66,7 @@ struct TimelineStripEnhanced: View {
             Button(action: navigateNext) {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(canNavigateNext ? .white.opacity(0.95) : .white.opacity(0.3))
+                    .foregroundColor(canNavigateNext ? Color.primary : Color.secondary)
                     .frame(width: 32, height: bandHeight)
                     .contentShape(Rectangle())
             }
@@ -95,7 +95,7 @@ struct TimelineStripEnhanced: View {
         ZStack(alignment: .leading) {
             // Baseline track with subtle visibility
             Rectangle()
-                .fill(Color.white.opacity(0.05)) // Subtle track for both light and dark
+                .fill(Color(UIColor.separator)) // Adaptive subtle track
                 .frame(height: 2)
                 .frame(maxWidth: .infinity)
             
@@ -358,7 +358,7 @@ struct TimelineStripEnhanced: View {
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(colorScheme == .dark ? Color.black.opacity(0.7) : Color.white.opacity(0.9))
+                    .fill(colorScheme == .dark ? Color.black.opacity(0.7) : Color(UIColor.systemBackground).opacity(0.9))
             )
             .offset(y: -30)
             .transition(.move(edge: .top).combined(with: .opacity))

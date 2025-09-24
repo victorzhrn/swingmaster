@@ -10,6 +10,7 @@ import SwiftUI
 struct SwingMetricsBar: View {
     let shot: Shot?
     @State private var isExpanded: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
     
     private var metrics: SegmentMetrics? {
         shot?.segmentMetrics
@@ -76,10 +77,10 @@ struct SwingMetricsBar: View {
             // Shot type
             Text(shot?.type.accessibleName.uppercased() ?? "SHOT")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.95))
+                .foregroundColor(.primary)
             
             Text("•")
-                .foregroundColor(.white.opacity(0.3))
+                .foregroundColor(.secondary)
             
             // Inline metrics with consistent opacity
             Group {
@@ -105,14 +106,14 @@ struct SwingMetricsBar: View {
             // Expand button
             Image(systemName: "chevron.down.circle")
                 .font(.system(size: 14))
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(.secondary)
         }
         .padding(.horizontal, 16)
         .frame(height: 40) // Reduced from 44 for better video visibility
         .background(.ultraThinMaterial) // Subtle glass effect
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1) // 10% white border
+                .stroke(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .padding(.horizontal, 16) // Consistent 16pt margins
@@ -141,12 +142,12 @@ struct SwingMetricsBar: View {
             HStack {
                 Text("\(shot?.type.accessibleName.uppercased() ?? "SHOT") ANALYSIS")
                     .font(.system(size: 13, weight: .semibold)) // Match compact view size
-                    .foregroundColor(.white.opacity(0.95)) // Consistent opacity
+                    .foregroundColor(.primary)
                 Spacer()
                 Button(action: { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isExpanded = false } }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 20)) // Slightly smaller for consistency
-                        .foregroundColor(.white.opacity(0.6)) // Consistent secondary opacity
+                        .foregroundColor(.secondary)
                         .symbolRenderingMode(.hierarchical)
                 }
                 .accessibilityLabel("Close metrics")
@@ -156,7 +157,7 @@ struct SwingMetricsBar: View {
             
             // Subtle divider with consistent opacity
             Rectangle()
-                .fill(Color.white.opacity(0.1)) // Match glass border opacity
+                .fill(Color(UIColor.separator))
                 .frame(height: 0.5)
                 .padding(.horizontal, 16)
             
@@ -180,7 +181,7 @@ struct SwingMetricsBar: View {
         .background(.ultraThinMaterial) // Match compact view glass level
         .overlay(
             RoundedRectangle(cornerRadius: 20) // Match compact view corner radius
-                .stroke(Color.white.opacity(0.1), lineWidth: 1) // Match compact view border
+                .stroke(colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .padding(.horizontal, 16) // Match compact view margins
@@ -203,12 +204,12 @@ struct SwingMetricsBar: View {
             VStack(alignment: .leading, spacing: 2) { // Tight spacing for related content
                 Text(label)
                     .font(.system(size: 11, weight: .medium)) // .caption2 from design principles
-                    .foregroundColor(.white.opacity(0.6)) // Consistent secondary opacity
+                    .foregroundColor(.secondary)
                     .lineLimit(1)
                 
                 Text(value)
                     .font(.system(size: 14, weight: .bold, design: .monospaced)) // Smaller but still readable
-                    .foregroundColor(.white.opacity(0.95)) // Consistent primary opacity
+                    .foregroundColor(.primary)
                     .lineLimit(1)
             }
             
