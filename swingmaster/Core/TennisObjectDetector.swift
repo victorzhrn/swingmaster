@@ -54,7 +54,12 @@ class TennisObjectDetector {
         
         do {
             var config = MLModelConfiguration()
+            #if targetEnvironment(simulator)
+            // Simulator lacks ANE/GPU; avoid MPSGraph/Espresso issues
+            config.computeUnits = .cpuOnly
+            #else
             config.computeUnits = .all
+            #endif
             let mlModel = try MLModel(contentsOf: modelURL, configuration: config)
             let model = try VNCoreMLModel(for: mlModel)
             let request = VNCoreMLRequest(model: model)
