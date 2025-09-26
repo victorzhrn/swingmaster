@@ -46,18 +46,25 @@ struct AnalysisView: View {
     @State private var currentUserPose: PoseFrame? = nil
     @State private var currentProPose: PoseFrame? = nil
 
+    // MARK: - UI chrome visibility
+    @State private var chromeHidden: Bool = false
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
                 // Base Layer: Full-screen video (kept for playback; visually hidden in Skeleton Only)
                 videoLayer(geometry: geometry)
                     .opacity(skeletonOnly ? 0 : 1)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) { chromeHidden.toggle() }
+                    }
                 
                 // Overlay Layer 1: Skeleton or Trajectory visualization
                 if let shot = shots.first(where: { $0.id == selectedShotID }) {
                     if showSkeleton {
                         if isComparing {
-                            HStack(spacing: 1) {
+                            HStack(spacing: 0) {
                                 SkeletonOverlay(pose: currentUserPose, videoAspectRatio: videoAspectRatio)
                                     .frame(width: geometry.size.width / 2)
                                     .allowsHitTesting(false)
@@ -72,7 +79,7 @@ struct AnalysisView: View {
                     } else {
                         if isComparing {
                             // Trajectory only on left (user) side
-                            HStack(spacing: 1) { // Match the video spacing
+                            HStack(spacing: 0) { // Match the video spacing
                                 TrajectoryOverlay(
                                     trajectoriesByType: trajectoryCache[shot.id] ?? [:],
                                     enabledTrajectories: enabledTrajectories,
@@ -127,6 +134,9 @@ struct AnalysisView: View {
                         .padding(.top, geometry.safeAreaInsets.top)
                     Spacer()
                 }
+                .opacity(chromeHidden ? 0 : 1)
+                .allowsHitTesting(!chromeHidden)
+                .animation(.easeInOut(duration: 0.2), value: chromeHidden)
                 
                 // Overlay Layer 3: Floating controls + Navigation panel
                 VStack {
@@ -179,6 +189,9 @@ struct AnalysisView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, geometry.safeAreaInsets.bottom + 8)
                 }
+                .opacity(chromeHidden ? 0 : 1)
+                .allowsHitTesting(!chromeHidden)
+                .animation(.easeInOut(duration: 0.2), value: chromeHidden)
             }
             .ignoresSafeArea(.container, edges: .all)
         }
@@ -302,8 +315,9 @@ struct AnalysisView: View {
     @ViewBuilder
     private func videoLayer(geometry: GeometryProxy) -> some View {
         if isComparing {
-            // Split view with 1pt gap
-            HStack(spacing: 1) {
+            // Split view with seamless center seam
+            ZStack {
+                HStack(spacing: 0) {
                 // User video (left) - narrower aspect
                 Group {
                     if let url = videoURL {
@@ -328,7 +342,6 @@ struct AnalysisView: View {
                 }
                 .frame(width: geometry.size.width / 2)
                 .clipped() // Handle narrower aspect ratio
-                .overlay(userVideoLabel, alignment: .topLeading)
                 
                 // Pro video (right) - local file
                 if let proURL = Bundle.main.url(
@@ -348,7 +361,6 @@ struct AnalysisView: View {
                     )
                     .frame(width: geometry.size.width / 2)
                     .clipped() // Handle narrower aspect ratio
-                    .overlay(proVideoLabel, alignment: .topLeading)
                     .overlay(alignment: .center) {
                         if !showSkeleton {
                             if let pro = proShot {
@@ -377,6 +389,10 @@ struct AnalysisView: View {
                         )
                         .frame(width: geometry.size.width / 2)
                 }
+                // Close HStack before adding seam overlay
+                }
+                // Subtle glass seam centered between videos, fades at top/bottom
+                CenterSeam()
             }
         } else {
             // Original full-screen video (existing code)
@@ -405,26 +421,7 @@ struct AnalysisView: View {
         }
     }
     
-    // Label overlays using design system
-    private var userVideoLabel: some View {
-        Text("YOU")
-            .font(.system(size: 11, weight: .bold)) // .caption2 bold
-            .foregroundColor(.white)
-            .padding(Spacing.micro) // 4pt
-            .background(Color.black.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .padding(Spacing.small) // 8pt margin
-    }
     
-    private var proVideoLabel: some View {
-        Text("PRO")
-            .font(.system(size: 11, weight: .bold)) // .caption2 bold
-            .foregroundColor(.white)
-            .padding(Spacing.micro) // 4pt
-            .background(Color.black.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .padding(Spacing.small) // 8pt margin
-    }
     
     private func videoPlaceholder() -> some View {
         ZStack {
@@ -687,6 +684,66 @@ private struct KeyframeTabs: View {
 }
 
 // ViewModeControl binds directly to enabledTrajectories and showSkeleton
+
+#if canImport(SwiftUI)
+private struct CenterSeam: View {
+    @Environment(\.colorScheme) private var colorScheme
+    private var seamStrokeColor: Color { colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08) }
+    private var seamMaterialOpacity: Double { colorScheme == .dark ? 0.35 : 0.25 }
+    private let verticalFadeHeight: CGFloat = 72
+    private let seamWidth: CGFloat = 2
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .overlay(alignment: .center) {
+                // Glass seam with top/bottom fade and subtle stroke
+                ZStack {
+                    // Material core
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .opacity(seamMaterialOpacity)
+                        .frame(width: seamWidth)
+                        .mask(
+                            LinearGradient(
+                                colors: [Color.clear, Color.white, Color.white, Color.clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .opacity(1)
+                            .blur(radius: 0)
+                            .frame(maxHeight: .infinity)
+                            .padding(.vertical, 0)
+                        )
+
+                    // Subtle stroke for edge definition
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, seamStrokeColor],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(width: 1, height: verticalFadeHeight)
+
+                        Rectangle()
+                            .fill(seamStrokeColor)
+                            .frame(width: 1)
+                            .frame(maxHeight: .infinity)
+
+                        LinearGradient(
+                            colors: [seamStrokeColor, Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(width: 1, height: verticalFadeHeight)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+            .allowsHitTesting(false)
+    }
+}
+#endif
 
 #Preview("AnalysisView") {
     let shots = Array<Shot>.sampleShots(duration: 92)
